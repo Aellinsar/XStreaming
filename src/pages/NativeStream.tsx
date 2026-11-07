@@ -23,6 +23,12 @@ import {
   getCurrentScreenOrientation,
   type ScreenOrientation,
 } from '../utils/orientation';
+import {
+  canScheduleStreamReconnect,
+  resolveStreamFailureDecision,
+  shouldExitStreamOnAppActive,
+  shouldReconnectOnAppActive,
+} from '../utils/streamReconnect';
 import {useSelector} from 'react-redux';
 import XcloudApi from '../xCloud';
 import WebApi from '../web';
@@ -294,6 +300,7 @@ export function NativeStreamScreenBase({
   const frameGenStatsSampleRef = React.useRef<any>(null);
   const connectStateRef = React.useRef<any>('');
   const reconnectTimerRef = React.useRef<any>(null);
+  const xhomeDisconnectTimerRef = React.useRef<any>(null);
   const reconnectPendingRef = React.useRef(false);
   const reconnectAttemptsRef = React.useRef(0);
   const reconnectExhaustedRef = React.useRef(false);
@@ -836,11 +843,32 @@ export function NativeStreamScreenBase({
     }
   }, []);
 
+  const remoteCloseExit = React.useCallback(() => {
+    if (isRequestExit.current) {
+      return;
+    }
+    isRequestExit.current = true;
+    if (xhomeDisconnectTimerRef.current) {
+      clearTimeout(xhomeDisconnectTimerRef.current);
+      xhomeDisconnectTimerRef.current = null;
+    }
+    const _streamApi =
+      route.params?.streamType === 'cloud'
+        ? xCloudApiRef.current
+        : xHomeApiRef.current;
+    activeWebrtcClientRef.current?.close?.();
+    waitStopStream(_streamApi);
+    ToastAndroid.show(t('Streaming is closed'), ToastAndroid.SHORT);
+    finishStreamExit();
+  }, [finishStreamExit, route.params?.streamType, t, waitStopStream]);
+
   const scheduleReconnect = React.useCallback(() => {
     if (
-      route.params?.streamType !== 'cloud' ||
-      isRequestExit.current ||
-      !isConnected.current
+      !canScheduleStreamReconnect({
+        streamType: route.params?.streamType,
+        isRequestExit: isRequestExit.current,
+        isConnected: isConnected.current,
+      })
     ) {
       return false;
     }
@@ -1028,6 +1056,25 @@ export function NativeStreamScreenBase({
     appStateSubscription.current = AppState.addEventListener(
       'change',
       async state => {
+        if (state === 'active') {
+          const decisionParams = {
+            appState: state,
+            connectState: connectStateRef.current,
+            isConnected: isConnected.current,
+            isRequestExit: isRequestExit.current,
+            streamType: route.params?.streamType,
+            reconnectPending: reconnectPendingRef.current,
+            hasReconnectTimer: Boolean(reconnectTimerRef.current),
+          };
+          if (shouldReconnectOnAppActive(decisionParams)) {
+            scheduleReconnect();
+            return;
+          }
+          if (shouldExitStreamOnAppActive(decisionParams)) {
+            remoteCloseExit();
+            return;
+          }
+        }
         if (
           !Platform.isTV &&
           !portraitMode &&
@@ -1627,6 +1674,10 @@ export function NativeStreamScreenBase({
             clearTimeout(reconnectTimerRef.current);
             reconnectTimerRef.current = null;
           }
+          if (xhomeDisconnectTimerRef.current) {
+            clearTimeout(xhomeDisconnectTimerRef.current);
+            xhomeDisconnectTimerRef.current = null;
+          }
           reconnectPendingRef.current = false;
           reconnectAttemptsRef.current = 0;
           reconnectExhaustedRef.current = false;
@@ -1729,17 +1780,39 @@ export function NativeStreamScreenBase({
             }, 16);
           }
         } else if (state === DISCONNECTED) {
-          scheduleReconnect();
+          if (!scheduleReconnect() && route.params?.streamType !== 'cloud') {
+            if (!xhomeDisconnectTimerRef.current) {
+              xhomeDisconnectTimerRef.current = setTimeout(() => {
+                xhomeDisconnectTimerRef.current = null;
+                if (
+                  connectStateRef.current === DISCONNECTED &&
+                  !isRequestExit.current
+                ) {
+                  remoteCloseExit();
+                }
+              }, 3000);
+            }
+          }
         } else if (state === CLOSED) {
           if (isRequestExit.current) {
             return;
           }
-          if (isConnected.current && scheduleReconnect()) {
-            // Keep the cloud session alive while the WebRTC transport retries.
-          } else if (connectStateRef.current !== CONNECTED) {
-            return;
-          } else {
-            Alert.alert(t('Warning'), t('Streaming is closed'), [
+          if (xhomeDisconnectTimerRef.current) {
+            clearTimeout(xhomeDisconnectTimerRef.current);
+            xhomeDisconnectTimerRef.current = null;
+          }
+          const closedDecision = resolveStreamFailureDecision({
+            state: CLOSED,
+            isConnected: isConnected.current,
+            previousConnectState: connectStateRef.current,
+            isRequestExit: isRequestExit.current,
+            streamType: route.params?.streamType,
+            canScheduleReconnect: scheduleReconnect(),
+          });
+          if (closedDecision.type === 'exit_stream') {
+            remoteCloseExit();
+          } else if (closedDecision.type === 'alert') {
+            Alert.alert(t('Warning'), t(closedDecision.messageKey), [
               {
                 text: t('Confirm'),
                 style: 'default',
@@ -1750,10 +1823,22 @@ export function NativeStreamScreenBase({
             ]);
           }
         } else if (state === FAILED) {
-          if (isConnected.current) {
-            scheduleReconnect();
-          } else {
-            Alert.alert(t('Warning'), t('NAT failed'), [
+          if (xhomeDisconnectTimerRef.current) {
+            clearTimeout(xhomeDisconnectTimerRef.current);
+            xhomeDisconnectTimerRef.current = null;
+          }
+          const failedDecision = resolveStreamFailureDecision({
+            state: FAILED,
+            isConnected: isConnected.current,
+            previousConnectState: connectStateRef.current,
+            isRequestExit: isRequestExit.current,
+            streamType: route.params?.streamType,
+            canScheduleReconnect: isConnected.current && scheduleReconnect(),
+          });
+          if (failedDecision.type === 'exit_stream') {
+            remoteCloseExit();
+          } else if (failedDecision.type === 'alert') {
+            Alert.alert(t('Warning'), t(failedDecision.messageKey), [
               {
                 text: t('Confirm'),
                 style: 'default',
@@ -2202,6 +2287,10 @@ export function NativeStreamScreenBase({
         clearTimeout(reconnectTimerRef.current);
         reconnectTimerRef.current = null;
       }
+      if (xhomeDisconnectTimerRef.current) {
+        clearTimeout(xhomeDisconnectTimerRef.current);
+        xhomeDisconnectTimerRef.current = null;
+      }
       if (activeWebrtcClientRef.current === webrtcClient) {
         activeWebrtcClientRef.current = null;
       }
@@ -2573,6 +2662,10 @@ export function NativeStreamScreenBase({
       if (reconnectTimerRef.current) {
         clearTimeout(reconnectTimerRef.current);
         reconnectTimerRef.current = null;
+      }
+      if (xhomeDisconnectTimerRef.current) {
+        clearTimeout(xhomeDisconnectTimerRef.current);
+        xhomeDisconnectTimerRef.current = null;
       }
       reconnectPendingRef.current = false;
       setIsExiting(true);

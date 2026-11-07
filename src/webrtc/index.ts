@@ -85,6 +85,7 @@ class webRTCClient {
   _webrtcChannelProcessors: any = {};
 
   _isResetting = false;
+  _hasNotifiedRemoteClose = false;
   _gamepad_deadzone = 0.2;
   _coop = false;
   _custom_gamepad_mapping: any = null;
@@ -128,6 +129,8 @@ class webRTCClient {
 
   init() {
     const settings = getSettings();
+    this._isResetting = false;
+    this._hasNotifiedRemoteClose = false;
     this._resetAudioLevelTracking();
     this._resetVideoTrackState();
 
@@ -386,6 +389,19 @@ class webRTCClient {
     }
   }
 
+  _notifyRemoteChannelClosed(name: string) {
+    if (this._isResetting || this._hasNotifiedRemoteClose) {
+      return;
+    }
+    if (name === 'control' || name === 'input' || name === 'message') {
+      this._hasNotifiedRemoteClose = true;
+      console.log(
+        `xCloudPlayer Library.ts - [${name}] Remote closed critical data channel; notifying closed state`,
+      );
+      this._connectedHandler && this._connectedHandler('closed');
+    }
+  }
+
   _openDataChannel(name: string, config: any) {
     console.log(
       'xCloudPlayer Library.ts - Creating data channel:',
@@ -463,6 +479,7 @@ class webRTCClient {
           event,
         );
       }
+      this._notifyRemoteChannelClosed(name);
     });
 
     this._webrtcDataChannels[name].addEventListener('close', (event: any) => {
@@ -478,6 +495,7 @@ class webRTCClient {
           event,
         );
       }
+      this._notifyRemoteChannelClosed(name);
     });
 
     this._webrtcDataChannels[name].addEventListener('error', (event: any) => {
