@@ -98,4 +98,26 @@ describe('expandTeredoCandidates', () => {
       candidates[4],
     ]);
   });
+
+  it('prioritizes RFC1918 private LAN IPv4 candidates when prioritizeIpv6 is false', () => {
+    const candidates = [
+      {
+        candidate: 'a=candidate:1 1 UDP 100 2001:db8::1 5000 typ srflx',
+      },
+      {
+        candidate: 'a=candidate:2 1 UDP 100 192.168.1.30 9002 typ host',
+      },
+      {
+        candidate: 'a=candidate:3 1 UDP 100 198.51.100.10 3074 typ srflx',
+      },
+      {candidate: 'a=end-of-candidates'},
+    ];
+
+    expect(expandTeredoCandidates(candidates, false)).toEqual([
+      candidates[1],
+      candidates[0],
+      candidates[2],
+      candidates[3],
+    ]);
+  });
 });

@@ -11,6 +11,14 @@ type IceCandidateData = {
 const CANDIDATE_IP_PATTERN = /^[0-9a-f:.]+$/i;
 const DEFAULT_CANDIDATE_PORT = 9002;
 const XBOX_GAME_PORT = 3074;
+const RFC1918_LAN_IPV4_PATTERN =
+  /^(192\.168\.\d{1,3}\.\d{1,3}|10\.\d{1,3}\.\d{1,3}\.\d{1,3}|172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3})$/;
+
+function isPrivateLanIpv4Candidate(candidateStr: string): boolean {
+  const tokens = candidateStr.trim().split(/\s+/);
+  const ip = tokens[4] ?? '';
+  return RFC1918_LAN_IPV4_PATTERN.test(ip);
+}
 
 export function expandTeredoCandidates(
   exchangeCandidates: IceCandidateData[],
@@ -62,16 +70,29 @@ export function expandTeredoCandidates(
     }
   });
 
-  if (!prioritizeIpv6) {
-    return candidates;
-  }
-
   const endOfCandidates = candidates.filter(
     ({candidate}) => candidate === 'a=end-of-candidates',
   );
   const orderedCandidates = candidates.filter(
     ({candidate}) => candidate !== 'a=end-of-candidates',
   );
+
+  if (!prioritizeIpv6) {
+    return orderedCandidates
+      .map((candidate, index) => ({candidate, index}))
+      .sort((first, second) => {
+        const firstIsLan = isPrivateLanIpv4Candidate(first.candidate.candidate);
+        const secondIsLan = isPrivateLanIpv4Candidate(
+          second.candidate.candidate,
+        );
+        if (firstIsLan === secondIsLan) {
+          return first.index - second.index;
+        }
+        return firstIsLan ? -1 : 1;
+      })
+      .map(({candidate}) => candidate)
+      .concat(endOfCandidates);
+  }
 
   return orderedCandidates
     .map((candidate, index) => ({candidate, index}))
