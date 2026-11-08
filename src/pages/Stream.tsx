@@ -26,6 +26,7 @@ import {WebView} from 'react-native-webview';
 import Orientation from 'react-native-orientation-locker';
 import RNRestart from 'react-native-restart';
 import Spinner from '../components/Spinner';
+import {formatFriendlyStreamError} from '../utils/connectionStatus';
 import XcloudApi from '../xCloud';
 import {useSelector} from 'react-redux';
 import {getSettings, saveSettings} from '../store/settingStore';

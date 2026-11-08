@@ -18,6 +18,13 @@ import {IconButton} from 'react-native-paper';
 import {RTCView, MediaStream, RTCRtpReceiver} from 'react-native-webrtc';
 import Orientation from 'react-native-orientation-locker';
 import Spinner from '../components/Spinner';
+import {formatFriendlyStreamError} from '../utils/connectionStatus';
+import {
+  canScheduleStreamReconnect,
+  resolveStreamConnectionTransition,
+  shouldExitStreamOnAppActive,
+  shouldReconnectOnAppActive,
+} from '../utils/streamReconnect';
 import {
   applyScreenOrientation,
   getCurrentScreenOrientation,
@@ -294,6 +301,7 @@ export function NativeStreamScreenBase({
   const frameGenStatsSampleRef = React.useRef<any>(null);
   const connectStateRef = React.useRef<any>('');
   const reconnectTimerRef = React.useRef<any>(null);
+  const xhomeDisconnectTimerRef = React.useRef<any>(null);
   const reconnectPendingRef = React.useRef(false);
   const reconnectAttemptsRef = React.useRef(0);
   const reconnectExhaustedRef = React.useRef(false);
@@ -838,9 +846,11 @@ export function NativeStreamScreenBase({
 
   const scheduleReconnect = React.useCallback(() => {
     if (
-      route.params?.streamType !== 'cloud' ||
-      isRequestExit.current ||
-      !isConnected.current
+      !canScheduleStreamReconnect({
+        streamType: route.params?.streamType,
+        isConnected: isConnected.current,
+        isRequestExit: isRequestExit.current,
+      })
     ) {
       return false;
     }
@@ -851,6 +861,15 @@ export function NativeStreamScreenBase({
 
     if (reconnectTimerRef.current || reconnectPendingRef.current) {
       return true;
+    }
+
+    if (keepaliveInterval.current) {
+      clearInterval(keepaliveInterval.current);
+      keepaliveInterval.current = null;
+    }
+    if (frameTimer.current) {
+      clearInterval(frameTimer.current);
+      frameTimer.current = null;
     }
 
     if (reconnectAttemptsRef.current >= MAX_RECONNECT_ATTEMPTS) {
@@ -1028,6 +1047,41 @@ export function NativeStreamScreenBase({
     appStateSubscription.current = AppState.addEventListener(
       'change',
       async state => {
+        if (state === 'active') {
+          if (!portraitMode) {
+            FullScreenManager.immersiveModeOn();
+          }
+          if (
+            shouldReconnectOnAppActive({
+              appState: state,
+              streamType: route.params?.streamType,
+              isConnected: isConnected.current,
+              isRequestExit: isRequestExit.current,
+              currentConnectState: connectStateRef.current,
+            })
+          ) {
+            scheduleReconnect();
+          } else if (
+            shouldExitStreamOnAppActive({
+              appState: state,
+              streamType: route.params?.streamType,
+              isConnected: isConnected.current,
+              isRequestExit: isRequestExit.current,
+              currentConnectState: connectStateRef.current,
+            })
+          ) {
+            isRequestExit.current = true;
+            setLoading(false);
+            webrtcClient && webrtcClient.close();
+            waitStopStream(
+              route.params?.streamType === 'cloud'
+                ? xCloudApiRef.current
+                : xHomeApiRef.current,
+            );
+            finishStreamExit();
+          }
+          return;
+        }
         if (
           !Platform.isTV &&
           !portraitMode &&
@@ -1588,6 +1642,29 @@ export function NativeStreamScreenBase({
       webrtcClient.setSystemUiHandler(handleSystemUiEvent);
       webrtcClient.setMessageHandler(handleStreamingMessage);
 
+      if (route.params?.streamType === 'cloud') {
+        if (
+          _settings.xcloud_bitrate_mode === 'custom' &&
+          Number(_settings.xcloud_bitrate) > 0
+        ) {
+          webrtcClient.setVideoBitrate(Number(_settings.xcloud_bitrate));
+        }
+      } else {
+        if (
+          _settings.xhome_bitrate_mode === 'custom' &&
+          Number(_settings.xhome_bitrate) > 0
+        ) {
+          webrtcClient.setVideoBitrate(Number(_settings.xhome_bitrate));
+        }
+      }
+
+      if (
+        _settings.audio_bitrate_mode === 'custom' &&
+        Number(_settings.audio_bitrate) > 0
+      ) {
+        webrtcClient.setAudioBitrate(Number(_settings.audio_bitrate));
+      }
+
       if (_settings.coop) {
         webrtcClient.setCoop();
       }
@@ -1626,6 +1703,10 @@ export function NativeStreamScreenBase({
           if (reconnectTimerRef.current) {
             clearTimeout(reconnectTimerRef.current);
             reconnectTimerRef.current = null;
+          }
+          if (xhomeDisconnectTimerRef.current) {
+            clearTimeout(xhomeDisconnectTimerRef.current);
+            xhomeDisconnectTimerRef.current = null;
           }
           reconnectPendingRef.current = false;
           reconnectAttemptsRef.current = 0;
@@ -1728,17 +1809,38 @@ export function NativeStreamScreenBase({
               });
             }, 16);
           }
-        } else if (state === DISCONNECTED) {
-          scheduleReconnect();
-        } else if (state === CLOSED) {
-          if (isRequestExit.current) {
-            return;
+        } else {
+          if (
+            state === DISCONNECTED &&
+            route.params?.streamType !== 'cloud' &&
+            isConnected.current &&
+            !isRequestExit.current &&
+            !xhomeDisconnectTimerRef.current
+          ) {
+            xhomeDisconnectTimerRef.current = setTimeout(() => {
+              xhomeDisconnectTimerRef.current = null;
+              if (
+                !isRequestExit.current &&
+                connectStateRef.current !== CONNECTED
+              ) {
+                remoteCloseExit();
+              }
+            }, 3000);
           }
-          if (isConnected.current && scheduleReconnect()) {
-            // Keep the cloud session alive while the WebRTC transport retries.
-          } else if (connectStateRef.current !== CONNECTED) {
-            return;
-          } else {
+
+          const transitionAction = resolveStreamConnectionTransition(
+            {
+              state,
+              previousState: connectStateRef.current,
+              isConnected: isConnected.current,
+              isRequestExit: isRequestExit.current,
+              streamType: route.params?.streamType,
+            },
+            scheduleReconnect,
+          );
+          if (transitionAction.type === 'exit_stream') {
+            remoteCloseExit();
+          } else if (transitionAction.type === 'alert_closed') {
             Alert.alert(t('Warning'), t('Streaming is closed'), [
               {
                 text: t('Confirm'),
@@ -1748,11 +1850,17 @@ export function NativeStreamScreenBase({
                 },
               },
             ]);
-          }
-        } else if (state === FAILED) {
-          if (isConnected.current) {
-            scheduleReconnect();
-          } else {
+          } else if (transitionAction.type === 'alert_reconnected_failed') {
+            Alert.alert(t('Warning'), t('Reconnected failed'), [
+              {
+                text: t('Confirm'),
+                style: 'default',
+                onPress: () => {
+                  exit();
+                },
+              },
+            ]);
+          } else if (transitionAction.type === 'alert_nat_failed') {
             Alert.alert(t('Warning'), t('NAT failed'), [
               {
                 text: t('Confirm'),
@@ -1912,8 +2020,28 @@ export function NativeStreamScreenBase({
         }
       });
 
+      const remoteCloseExit = () => {
+        if (isRequestExit.current) {
+          return;
+        }
+        isRequestExit.current = true;
+        if (xhomeDisconnectTimerRef.current) {
+          clearTimeout(xhomeDisconnectTimerRef.current);
+          xhomeDisconnectTimerRef.current = null;
+        }
+        setLoading(false);
+        webrtcClient && webrtcClient.close();
+        waitStopStream(streamApi);
+        ToastAndroid.show(t('Streaming is closed'), ToastAndroid.SHORT);
+        finishStreamExit();
+      };
+
       const exit = async () => {
         isRequestExit.current = true;
+        if (xhomeDisconnectTimerRef.current) {
+          clearTimeout(xhomeDisconnectTimerRef.current);
+          xhomeDisconnectTimerRef.current = null;
+        }
         setLoading(false);
         webrtcClient && webrtcClient.close();
         await waitStopStream(streamApi);
@@ -2060,7 +2188,11 @@ export function NativeStreamScreenBase({
             setLoadingText(msg);
           }
         } else if (info.state === 'Provisioning') {
-          setLoadingText(t('Allocating cloud server...'));
+          setLoadingText(
+            route.params?.streamType === 'cloud'
+              ? t('Allocating cloud server...')
+              : 'Waking Xbox console...',
+          );
         } else if (info.state === 'ReadyToConnect') {
           setLoadingText(t('Ready to connect, authenticating...'));
         }
@@ -2076,10 +2208,11 @@ export function NativeStreamScreenBase({
           setLoadingText(
             `${t('Configuration obtained successfully, initiating offer...')}`,
           );
-          webrtcClient.createOffer().then(offer => {
+          webrtcClient.createOffer().then(async offer => {
             // Set codec
             if (_settings.codec !== '') {
               offer.sdp = setCodec(offer.sdp);
+              await webrtcClient.setLocalDescription(offer);
             }
 
             streamApi
@@ -2109,7 +2242,7 @@ export function NativeStreamScreenBase({
                       }
                       Alert.alert(
                         t('Warning'),
-                        '[sendICECandidates] fail:' + e,
+                        formatFriendlyStreamError('ice', e),
                         [
                           {
                             text: t('Confirm'),
@@ -2127,15 +2260,19 @@ export function NativeStreamScreenBase({
                 if (scheduleReconnect()) {
                   return;
                 }
-                Alert.alert(t('Warning'), '[sendSDPOffer] fail:' + e, [
-                  {
-                    text: t('Confirm'),
-                    style: 'default',
-                    onPress: () => {
-                      exit();
+                Alert.alert(
+                  t('Warning'),
+                  formatFriendlyStreamError('sdp', e),
+                  [
+                    {
+                      text: t('Confirm'),
+                      style: 'default',
+                      onPress: () => {
+                        exit();
+                      },
                     },
-                  },
-                ]);
+                  ],
+                );
               });
           });
         })
@@ -2201,6 +2338,10 @@ export function NativeStreamScreenBase({
       if (reconnectTimerRef.current) {
         clearTimeout(reconnectTimerRef.current);
         reconnectTimerRef.current = null;
+      }
+      if (xhomeDisconnectTimerRef.current) {
+        clearTimeout(xhomeDisconnectTimerRef.current);
+        xhomeDisconnectTimerRef.current = null;
       }
       if (activeWebrtcClientRef.current === webrtcClient) {
         activeWebrtcClientRef.current = null;
@@ -2573,6 +2714,10 @@ export function NativeStreamScreenBase({
       if (reconnectTimerRef.current) {
         clearTimeout(reconnectTimerRef.current);
         reconnectTimerRef.current = null;
+      }
+      if (xhomeDisconnectTimerRef.current) {
+        clearTimeout(xhomeDisconnectTimerRef.current);
+        xhomeDisconnectTimerRef.current = null;
       }
       reconnectPendingRef.current = false;
       setIsExiting(true);
