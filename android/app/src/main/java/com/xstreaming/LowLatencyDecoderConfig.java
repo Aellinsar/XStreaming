@@ -11,7 +11,7 @@ public final class LowLatencyDecoderConfig {
 
     public static boolean isEnabled(Context context) {
         SharedPreferences preferences = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE);
-        return preferences.getBoolean(KEY_ENABLED, false);
+        return preferences.getBoolean(KEY_ENABLED, true);
     }
 
     public static void setEnabled(Context context, boolean enabled) {

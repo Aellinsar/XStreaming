@@ -34,7 +34,7 @@ local.properties
 *.keystore
 !debug.keystore
 
-skills/
+!.agents/skills/
 
 # node.js
 #
@@ -71,3 +71,13 @@ server.json
 
 # Rust native build artifacts
 nano-rs/target/
+
+# Esedre local workspace wrappers, remote config, and snapshot
+.esedre/
+.agents/mcp.json
+.agents/mcp_config.json
+
+
+
+# Esedre ticket local snapshot (read-only projection)
+.esedre/snapshot.json

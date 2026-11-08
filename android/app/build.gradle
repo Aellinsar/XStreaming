@@ -119,7 +119,7 @@ android {
             keyPassword 'android'
         }
         release {
-            if (project.hasProperty('XSTREAMING_RELEASE_STORE_FILE')) {
+            if (project.hasProperty('XSTREAMING_RELEASE_STORE_FILE') && file(XSTREAMING_RELEASE_STORE_FILE).exists()) {
                 storeFile file(XSTREAMING_RELEASE_STORE_FILE)
                 storePassword XSTREAMING_RELEASE_STORE_PASSWORD
                 keyAlias XSTREAMING_RELEASE_KEY_ALIAS
@@ -134,8 +134,11 @@ android {
         release {
             // Caution! In production, you need to generate your own keystore file.
             // see https://reactnative.dev/docs/signed-apk-android.
-            signingConfig signingConfigs.debug
-            signingConfig signingConfigs.release
+            if (project.hasProperty('XSTREAMING_RELEASE_STORE_FILE') && file(XSTREAMING_RELEASE_STORE_FILE).exists()) {
+                signingConfig signingConfigs.release
+            } else {
+                signingConfig signingConfigs.debug
+            }
             minifyEnabled enableProguardInReleaseBuilds
             proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
         }
@@ -176,9 +179,11 @@ def nanoRustTargetMap = [
 ]
 
 def nanoRustHostTag = { ndkDir ->
-    def armTag = file("${ndkDir}/toolchains/llvm/prebuilt/darwin-arm64")
-    if (armTag.exists()) {
-        return "darwin-arm64"
+    def candidates = ["windows-x86_64", "linux-x86_64", "darwin-arm64", "darwin-x86_64"]
+    for (tag in candidates) {
+        if (file("${ndkDir}/toolchains/llvm/prebuilt/${tag}").exists()) {
+            return tag
+        }
     }
     return "darwin-x86_64"
 }
@@ -193,6 +198,24 @@ def nanoRustClangPrefix = { triple ->
     return "x86_64-linux-android"
 }
 
+def findCargoExecutable = {
+    def isWindows = System.getProperty("os.name").toLowerCase().contains("win")
+    def cargoBinName = isWindows ? "cargo.exe" : "cargo"
+    def userCargo = new File(System.getProperty("user.home"), ".cargo/bin/${cargoBinName}")
+    if (userCargo.exists()) {
+        return userCargo.absolutePath
+    }
+    def pathEnv = System.getenv("PATH") ?: ""
+    for (dir in pathEnv.split(File.pathSeparator)) {
+        if (!dir) continue
+        def candidate = new File(dir, cargoBinName)
+        if (candidate.exists()) {
+            return candidate.absolutePath
+        }
+    }
+    return null
+}
+
 tasks.register("syncNanoRustJniLibs") {
     def outputDir = file("$buildDir/generated/nanoJniLibs")
     inputs.files(fileTree("../../nano-rs") {
@@ -204,12 +227,24 @@ tasks.register("syncNanoRustJniLibs") {
     inputs.property("xstreamingTargetAbis", xstreamingTargetAbis.join(","))
     outputs.dir(outputDir)
     doLast {
+        delete(outputDir)
+        outputDir.mkdirs()
+
+        def cargoExe = findCargoExecutable()
+        if (cargoExe == null) {
+            logger.lifecycle("Skipping optional nano-rs JNI build (cargo not found on PATH)")
+            return
+        }
+
         def ndkDir = android.ndkDirectory
         if (ndkDir == null || !ndkDir.exists()) {
             throw new GradleException("Android NDK directory not found")
         }
 
-        delete(outputDir)
+        def isWindows = System.getProperty("os.name").toLowerCase().contains("win")
+        def clangSuffix = isWindows ? ".cmd" : ""
+        def arSuffix = isWindows ? ".exe" : ""
+
         xstreamingTargetAbis.each { abi ->
             def targetTriple = nanoRustTargetMap[abi]
             if (targetTriple == null) {
@@ -220,29 +255,33 @@ tasks.register("syncNanoRustJniLibs") {
             def prebuiltDir = file("${ndkDir}/toolchains/llvm/prebuilt/${hostTag}")
             def clangPrefix = nanoRustClangPrefix(targetTriple)
             def apiLevel = rootProject.ext.minSdkVersion
-            def clangPath = file("${prebuiltDir}/bin/${clangPrefix}${apiLevel}-clang")
-            def arPath = file("${prebuiltDir}/bin/llvm-ar")
+            def clangPath = file("${prebuiltDir}/bin/${clangPrefix}${apiLevel}-clang${clangSuffix}")
+            def arPath = file("${prebuiltDir}/bin/llvm-ar${arSuffix}")
 
             if (!clangPath.exists()) {
                 throw new GradleException("NDK clang not found for ${abi}: ${clangPath}")
             }
 
-            exec {
+            def buildResult = exec {
+                ignoreExitValue = true
                 workingDir file("../../nano-rs")
-                commandLine "cargo", "build", "--manifest-path", "Cargo.toml", "--target", targetTriple, "--release"
+                commandLine cargoExe, "build", "--manifest-path", "Cargo.toml", "--target", targetTriple, "--release"
                 environment "CARGO_TARGET_${targetTriple.toUpperCase().replace('-', '_')}_LINKER", clangPath.absolutePath
                 environment "CC_${targetTriple.replace('-', '_')}", clangPath.absolutePath
                 environment "AR_${targetTriple.replace('-', '_')}", arPath.absolutePath
             }
 
-            def builtLib = file("../../nano-rs/target/${targetTriple}/release/libnano_rs.so")
-            if (!builtLib.exists()) {
-                throw new GradleException("Built Rust library missing for ${abi}: ${builtLib}")
+            if (buildResult.exitValue != 0) {
+                logger.lifecycle("Skipping optional nano-rs JNI packaging for ${abi} (cargo build exited with ${buildResult.exitValue})")
+                return
             }
 
-            copy {
-                from builtLib
-                into file("$outputDir/${abi}")
+            def builtLib = file("../../nano-rs/target/${targetTriple}/release/libnano_rs.so")
+            if (builtLib.exists()) {
+                copy {
+                    from builtLib
+                    into file("$outputDir/${abi}")
+                }
             }
         }
     }
