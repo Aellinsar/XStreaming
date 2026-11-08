@@ -46,6 +46,7 @@ import {
   DEFAULT_THEME_PRIMARY_COLOR,
   normalizeHexColor,
 } from '../utils/themeColor';
+import {THEME_PRESETS} from '../theme/presets';
 import {
   getRegionIpForCloudName,
   getCloudNameForRegionIp,
@@ -213,6 +214,9 @@ function SettingDetailScreen({navigation, route}) {
       }
     } else if (settings[current] !== undefined) {
       settings[current] = settingValue;
+      if (current === 'theme' && THEME_PRESETS[settingValue]) {
+        settings.theme_primary_color = THEME_PRESETS[settingValue].primaryColor;
+      }
       if (current === 'force_region_ip') {
         const matchingCloud = getCloudNameForRegionIp(settingValue);
         if (matchingCloud) {
@@ -266,16 +270,6 @@ function SettingDetailScreen({navigation, route}) {
       clearXcloudData();
       clearConsolesData();
       handleSaveSettings();
-      setTimeout(() => {
-        restart();
-      }, 500);
-    } else if (current === 'use_msal_login') {
-      clearStreamToken();
-      clearWebToken();
-      clearXcloudData();
-      clearConsolesData();
-      authentication._tokenStore.clear();
-      CookieManager.clearAll();
       setTimeout(() => {
         restart();
       }, 500);

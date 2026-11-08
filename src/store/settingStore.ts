@@ -112,7 +112,7 @@ export type Settings = {
 const defaultSettings: Settings = {
   locale: 'en',
   locale_follow_system: true,
-  resolution: 720,
+  resolution: 1081,
   render_engine: 'native',
   xhome_bitrate_mode: 'auto',
   xhome_bitrate: 20,
@@ -147,7 +147,7 @@ const defaultSettings: Settings = {
   picture_in_picture: defaultPictureInPicture,
   native_portrait_mode: false,
   native_portrait_gamepad_layout: [],
-  native_low_latency_decoder: false,
+  native_low_latency_decoder: true,
   show_virtual_gamead: false,
   virtual_gamepad_opacity: 0.7,
   custom_virtual_gamepad: '',
@@ -171,8 +171,8 @@ const defaultSettings: Settings = {
   right_trigger_type: 0,
   right_trigger_effects: [],
   ipv6: false,
-  check_update: true,
-  power_on: false,
+  check_update: false,
+  power_on: true,
   use_inner_turn_server: false,
   server_url: '',
   server_username: '',
@@ -190,13 +190,13 @@ const defaultSettings: Settings = {
     brightness: 5,
   },
   hold_buttons: [],
-  theme: 'dark',
+  theme: 'nxe_2008',
   theme_primary_color: DEFAULT_THEME_PRIMARY_COLOR,
   show_menu: false,
-  fsr: false,
+  fsr: true,
   smart_frame_generation: false,
   coop: false,
-  use_msal_login: false,
+  use_msal_login: true,
   enable_microphone: false,
   debug: false,
   show_session_report: true,
@@ -204,6 +204,19 @@ const defaultSettings: Settings = {
 };
 
 let cachedSettings: Settings | null = null;
+
+const syncNativeSettings = (targetSettings: Settings) => {
+  try {
+    NativeModules.AudioSettingModule?.setStereoEnabled?.(
+      !!targetSettings.enable_stereo_audio,
+    );
+    NativeModules.AudioSettingModule?.setLowLatencyDecoderEnabled?.(
+      !!targetSettings.native_low_latency_decoder,
+    );
+  } catch (error) {
+    log.warn('sync native settings failed:', error);
+  }
+};
 
 export const saveSettings = (settings: Settings) => {
   log.info('SaveSettings:', settings);
@@ -220,16 +233,7 @@ export const saveSettings = (settings: Settings) => {
   }
   storage.set(STORE_KEY, JSON.stringify(totalSettings));
   cachedSettings = totalSettings;
-  try {
-    NativeModules.AudioSettingModule?.setStereoEnabled?.(
-      !!totalSettings.enable_stereo_audio,
-    );
-    NativeModules.AudioSettingModule?.setLowLatencyDecoderEnabled?.(
-      !!totalSettings.native_low_latency_decoder,
-    );
-  } catch (error) {
-    log.warn('sync native settings failed:', error);
-  }
+  syncNativeSettings(totalSettings);
   try {
     DeviceEventEmitter.emit(SETTINGS_CHANGED_EVENT, totalSettings);
   } catch (error) {
@@ -248,6 +252,7 @@ export const getSettings = (): Settings => {
       locale: getSystemLocale(),
       locale_follow_system: true,
     };
+    syncNativeSettings(cachedSettings);
     return cachedSettings;
   }
   try {
@@ -267,6 +272,15 @@ export const getSettings = (): Settings => {
       merged.show_session_report =
         String(_settings.show_session_report) === 'true';
     }
+    if (
+      (merged.theme_primary_color === '#0072CE' ||
+        merged.theme_primary_color === '#0EA5E9') &&
+      !storage.getBoolean('user.settings.royal_cyan_migrated')
+    ) {
+      merged.theme_primary_color = DEFAULT_THEME_PRIMARY_COLOR;
+      storage.set('user.settings.royal_cyan_migrated', true);
+      storage.set(STORE_KEY, JSON.stringify(merged));
+    }
     if (Platform.isTV) {
       merged.picture_in_picture = false;
     } else if (
@@ -276,6 +290,7 @@ export const getSettings = (): Settings => {
       merged.picture_in_picture = true;
     }
     cachedSettings = merged;
+    syncNativeSettings(cachedSettings);
     return cachedSettings;
   } catch {
     cachedSettings = {
@@ -283,6 +298,7 @@ export const getSettings = (): Settings => {
       locale: getSystemLocale(),
       locale_follow_system: true,
     };
+    syncNativeSettings(cachedSettings);
     return cachedSettings;
   }
 };

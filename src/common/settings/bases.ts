@@ -1,5 +1,5 @@
 import i18next from '../../i18n';
-import {THEME_PRIMARY_PRESET_COLORS} from '../../utils/themeColor';
+import {THEME_PRIMARY_COLOR_OPTIONS} from '../../utils/themeColor';
 
 const {t} = i18next;
 
@@ -28,9 +28,13 @@ const bases = [
     title: t('Theme'),
     description: t('Set the app theme to take effect on the next launch'),
     data: [
+      {value: 'nxe_2008', text: '2008 NXE Cobalt Blue (Default)'},
+      {value: 'nxe_arctic', text: '2008 NXE Arctic Cyan'},
+      {value: 'nxe_sapphire', text: '2008 NXE Deep Sapphire'},
+      {value: 'nxe_classic_green', text: '2008 NXE Classic Green (Original)'},
+      {value: 'xbox_series', text: 'Xbox Series Carbon & Blue Glass'},
+      {value: 'light', text: '2008 NXE Daylight Silver (Light)'},
       {value: 'auto', text: t('Auto')},
-      {value: 'light', text: t('Light')},
-      {value: 'dark', text: t('Dark')},
     ],
   },
   {
@@ -39,9 +43,9 @@ const bases = [
     title: t('Theme primary color'),
     description: t('Choose app primary color, takes effect on next launch'),
     tips: t('Choose from preset palette for best readability'),
-    data: THEME_PRIMARY_PRESET_COLORS.map(color => ({
-      value: color,
-      text: color,
+    data: THEME_PRIMARY_COLOR_OPTIONS.map(option => ({
+      value: option.value,
+      text: option.label,
     })),
   },
   {
@@ -54,16 +58,6 @@ const bases = [
       {value: 'native', text: t('Native')},
       {value: 'nano', text: t('Nano')},
       {value: 'web', text: t('Webview')},
-    ],
-  },
-  {
-    name: 'use_msal_login',
-    type: 'radio',
-    title: t('useMsalLoginTitle'),
-    description: t('useMsalLoginDesc'),
-    data: [
-      {value: false, text: t('Disable')},
-      {value: true, text: t('Enable')},
     ],
   },
   {

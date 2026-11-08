@@ -54,7 +54,6 @@ import CloudScreen from './pages/Cloud';
 import FriendsScreen from './pages/Friends';
 import AchivementScreen from './pages/Achivements';
 import AchivementDetailScreen from './pages/ArchivementDetail';
-import LoginScreen from './pages/Login';
 import StreamScreen from './pages/Stream';
 import NativeStreamScreen from './pages/NativeStream';
 import NativePortraitStreamScreen from './pages/NativePortraitStream';
@@ -89,6 +88,7 @@ import {
   normalizeHexColor,
 } from './utils/themeColor';
 import XboxSymbolBackground from './components/XboxSymbolBackground';
+import {resolveThemeTokens} from './theme/presets';
 
 import {useTranslation} from 'react-i18next';
 
@@ -119,8 +119,8 @@ const {LightTheme, DarkTheme} = adaptNavigationTheme({
   reactNavigationDark: NavigationDarkTheme,
 });
 
-const PAGE_BACKGROUND_LIGHT = '#FCFBFF';
-const PAGE_BACKGROUND_DARK = '#111320';
+const PAGE_BACKGROUND_LIGHT = '#EBF2F7';
+const PAGE_BACKGROUND_DARK = '#070D12';
 
 const withPageBackground = (ScreenComponent: any) => {
   const WrappedScreen = (props: any) => {
@@ -222,7 +222,6 @@ const AchivementBackgroundScreen = withPageBackground(AchivementScreen);
 const AchivementDetailBackgroundScreen = withPageBackground(
   AchivementDetailScreen,
 );
-const LoginBackgroundScreen = withPageBackground(LoginScreen);
 const SettingsBackgroundScreen = withSolidPageBackground(SettingsScreen);
 const SettingDetailBackgroundScreen = withPageBackground(SettingDetailScreen);
 const TitleDetailBackgroundScreen = withPageBackground(TitleDetailScreen);
@@ -439,8 +438,13 @@ function App() {
     });
   }, []);
 
-  const primaryColor = normalizeHexColor(
+  const themeTokens = resolveThemeTokens(
+    settings.theme,
+    colorScheme,
     settings.theme_primary_color,
+  );
+  const primaryColor = normalizeHexColor(
+    themeTokens.primaryColor,
     DEFAULT_THEME_PRIMARY_COLOR,
   );
   const paperLightTheme = applyPrimaryColorToPaperTheme(
@@ -461,26 +465,21 @@ function App() {
   );
   const CombinedDefaultTheme = merge(paperLightTheme, LightTheme);
   const CombinedDarkTheme = merge(paperDarkTheme, DarkTheme);
-  CombinedDefaultTheme.colors.background = PAGE_BACKGROUND_LIGHT;
-  CombinedDefaultTheme.colors.card = PAGE_BACKGROUND_LIGHT;
-  CombinedDarkTheme.colors.background = PAGE_BACKGROUND_DARK;
-  CombinedDarkTheme.colors.card = PAGE_BACKGROUND_DARK;
+  CombinedDefaultTheme.colors.background = themeTokens.isLight
+    ? themeTokens.stageSkyTop
+    : PAGE_BACKGROUND_LIGHT;
+  CombinedDefaultTheme.colors.card = CombinedDefaultTheme.colors.background;
+  CombinedDarkTheme.colors.background = !themeTokens.isLight
+    ? themeTokens.stageSkyTop
+    : PAGE_BACKGROUND_DARK;
+  CombinedDarkTheme.colors.card = CombinedDarkTheme.colors.background;
 
-  let paperTheme = paperDarkTheme;
-  let navigationTheme = CombinedDarkTheme;
+  let paperTheme = themeTokens.isLight ? paperLightTheme : paperDarkTheme;
+  let navigationTheme = themeTokens.isLight
+    ? CombinedDefaultTheme
+    : CombinedDarkTheme;
 
-  if (settings.theme === 'auto') {
-    paperTheme = colorScheme === 'dark' ? paperDarkTheme : paperLightTheme;
-    navigationTheme =
-      colorScheme === 'dark' ? CombinedDarkTheme : CombinedDefaultTheme;
-  } else if (settings.theme === 'light') {
-    paperTheme = paperLightTheme;
-    navigationTheme = CombinedDefaultTheme;
-  }
-
-  const isLight =
-    settings.theme === 'light' ||
-    (settings.theme === 'auto' && colorScheme === 'light');
+  const isLight = themeTokens.isLight;
 
   if (
     deviceInfos.factor?.toLocaleUpperCase().indexOf('NINTENDO') > -1 &&
@@ -549,11 +548,6 @@ function App() {
                     gestureEnabled: true,
                     gestureDirection: 'horizontal',
                   }}
-                />
-                <RootStack.Screen
-                  name="Login"
-                  component={LoginBackgroundScreen}
-                  options={{title: t('Login')}}
                 />
                 <RootStack.Screen
                   name="Stream"

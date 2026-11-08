@@ -1,358 +1,63 @@
 import React from 'react';
 import {
-  Dimensions,
-  Platform,
+  DeviceEventEmitter,
   StyleSheet,
-  View,
   useWindowDimensions,
 } from 'react-native';
 import Svg, {
-  Circle,
   Defs,
-  Ellipse,
-  G,
-  Line,
   LinearGradient,
   Path,
   RadialGradient,
   Rect,
   Stop,
-  Text as SvgText,
 } from 'react-native-svg';
-import {normalizeHexColor, shiftColor} from '../utils/themeColor';
+import {resolveThemeTokens} from '../theme/presets';
+import {
+  getSettings,
+  SETTINGS_CHANGED_EVENT,
+  Settings,
+} from '../store/settingStore';
 
 type Props = {
   isLight: boolean;
   primaryColor?: string;
+  themeName?: string;
 };
 
 const BACKGROUND_OVERDRAW = 96;
 
-type SymbolItem = {
-  kind: 'button' | 'dpad' | 'nexus' | 'stripe';
-  x: number;
-  y: number;
-  size: number;
-  rotate: number;
-  opacity: number;
-  label?: 'A' | 'B' | 'X' | 'Y';
-};
-
-const SYMBOLS: SymbolItem[] = [
-  {kind: 'nexus', x: 0.12, y: 0.1, size: 58, rotate: -8, opacity: 0.22},
-  {
-    kind: 'button',
-    x: 0.38,
-    y: 0.1,
-    size: 34,
-    rotate: 0,
-    opacity: 0.22,
-    label: 'Y',
-  },
-  {kind: 'dpad', x: 0.72, y: 0.11, size: 46, rotate: 8, opacity: 0.2},
-  {
-    kind: 'button',
-    x: 0.9,
-    y: 0.16,
-    size: 32,
-    rotate: 0,
-    opacity: 0.2,
-    label: 'B',
-  },
-  {kind: 'stripe', x: 0.18, y: 0.25, size: 110, rotate: -18, opacity: 0.12},
-  {
-    kind: 'button',
-    x: 0.58,
-    y: 0.27,
-    size: 28,
-    rotate: 0,
-    opacity: 0.16,
-    label: 'A',
-  },
-  {kind: 'nexus', x: 0.83, y: 0.36, size: 40, rotate: 12, opacity: 0.16},
-  {
-    kind: 'button',
-    x: 0.22,
-    y: 0.48,
-    size: 38,
-    rotate: 0,
-    opacity: 0.2,
-    label: 'X',
-  },
-  {kind: 'dpad', x: 0.48, y: 0.52, size: 36, rotate: -10, opacity: 0.15},
-  {
-    kind: 'button',
-    x: 0.77,
-    y: 0.58,
-    size: 48,
-    rotate: 0,
-    opacity: 0.22,
-    label: 'A',
-  },
-  {kind: 'stripe', x: 0.92, y: 0.66, size: 132, rotate: 16, opacity: 0.14},
-  {
-    kind: 'button',
-    x: 0.11,
-    y: 0.74,
-    size: 34,
-    rotate: 0,
-    opacity: 0.18,
-    label: 'B',
-  },
-  {kind: 'nexus', x: 0.35, y: 0.82, size: 46, rotate: -6, opacity: 0.18},
-  {
-    kind: 'button',
-    x: 0.62,
-    y: 0.88,
-    size: 30,
-    rotate: 0,
-    opacity: 0.18,
-    label: 'Y',
-  },
-  {kind: 'dpad', x: 0.88, y: 0.9, size: 42, rotate: 14, opacity: 0.18},
-  {
-    kind: 'button',
-    x: 0.99,
-    y: 0.95,
-    size: 30,
-    rotate: 0,
-    opacity: 0.18,
-    label: 'Y',
-  },
-  {kind: 'nexus', x: 0.1, y: 0.99, size: 46, rotate: -6, opacity: 0.18},
-];
-
-const usePalette = (isLight: boolean, primaryColor?: string) => {
-  const primary = normalizeHexColor(primaryColor, '#107C10');
-
-  if (isLight) {
-    const symbol = primary;
-    const symbolAlt = shiftColor(primary, -0.22);
-    const symbolText = shiftColor(primary, -0.42);
-    return {
-      start: '#FCFBFF',
-      mid: '#F5F1FF',
-      end: '#FFFFFF',
-      washA: '#D8CCFF',
-      washB: '#F6D9EA',
-      washC: shiftColor(primary, 0.72),
-      symbol,
-      symbolAlt,
-      symbolText,
-      base: '#FCFBFF',
-      hazeOpacity: 0.34,
-      symbolBoost: 1,
-    };
-  }
-
-  const symbol = shiftColor(primary, 0.4);
-  const symbolAlt = primary;
-  const symbolText = shiftColor(primary, 0.65);
-  return {
-    start: '#111320',
-    mid: '#1D1A32',
-    end: '#0D1018',
-    washA: '#7662D9',
-    washB: '#9D4778',
-    washC: shiftColor(primary, -0.25),
-    symbol,
-    symbolAlt,
-    symbolText,
-    base: '#111320',
-    hazeOpacity: 0.14,
-    symbolBoost: 1.25,
-  };
-};
-
-const renderButton = (
-  item: SymbolItem,
-  index: number,
-  width: number,
-  height: number,
-  palette: ReturnType<typeof usePalette>,
-) => {
-  const x = item.x * width;
-  const y = item.y * height;
-  const opacity = Math.min(0.36, item.opacity * palette.symbolBoost);
-
-  return (
-    <G key={`button-${index}`} opacity={opacity}>
-      <Circle
-        cx={x}
-        cy={y}
-        r={item.size / 2}
-        stroke={palette.symbol}
-        strokeWidth={2.8}
-        fill="none"
-      />
-      <SvgText
-        x={x}
-        y={y + item.size * 0.17}
-        textAnchor="middle"
-        fontSize={item.size * 0.58}
-        fontWeight="700"
-        fill={palette.symbolText}>
-        {item.label}
-      </SvgText>
-    </G>
-  );
-};
-
-const renderDpad = (
-  item: SymbolItem,
-  index: number,
-  width: number,
-  height: number,
-  palette: ReturnType<typeof usePalette>,
-) => {
-  const x = item.x * width;
-  const y = item.y * height;
-  const size = item.size;
-  const arm = size * 0.28;
-  const opacity = Math.min(0.34, item.opacity * palette.symbolBoost);
-
-  return (
-    <G
-      key={`dpad-${index}`}
-      opacity={opacity}
-      transform={`rotate(${item.rotate} ${x} ${y})`}>
-      <Rect
-        x={x - arm / 2}
-        y={y - size / 2}
-        width={arm}
-        height={size}
-        rx={3}
-        fill={palette.symbolAlt}
-      />
-      <Rect
-        x={x - size / 2}
-        y={y - arm / 2}
-        width={size}
-        height={arm}
-        rx={3}
-        fill={palette.symbolAlt}
-      />
-    </G>
-  );
-};
-
-const renderNexus = (
-  item: SymbolItem,
-  index: number,
-  width: number,
-  height: number,
-  palette: ReturnType<typeof usePalette>,
-) => {
-  const x = item.x * width;
-  const y = item.y * height;
-  const size = item.size;
-  const opacity = Math.min(0.32, item.opacity * palette.symbolBoost);
-
-  return (
-    <G
-      key={`nexus-${index}`}
-      opacity={opacity}
-      transform={`rotate(${item.rotate} ${x} ${y})`}>
-      <Circle
-        cx={x}
-        cy={y}
-        r={size / 2}
-        stroke={palette.symbol}
-        strokeWidth={2.4}
-        fill="none"
-      />
-      <Path
-        d={`M ${x - size * 0.26} ${y - size * 0.04}
-            C ${x - size * 0.12} ${y - size * 0.24},
-              ${x + size * 0.12} ${y - size * 0.24},
-              ${x + size * 0.26} ${y - size * 0.04}
-            M ${x - size * 0.18} ${y + size * 0.2}
-            C ${x - size * 0.06} ${y + size * 0.06},
-              ${x + size * 0.06} ${y + size * 0.06},
-              ${x + size * 0.18} ${y + size * 0.2}`}
-        stroke={palette.symbol}
-        strokeWidth={2.2}
-        strokeLinecap="round"
-        fill="none"
-      />
-    </G>
-  );
-};
-
-const renderStripe = (
-  item: SymbolItem,
-  index: number,
-  width: number,
-  height: number,
-  palette: ReturnType<typeof usePalette>,
-) => {
-  const x = item.x * width;
-  const y = item.y * height;
-  const size = item.size;
-  const opacity = Math.min(0.2, item.opacity * palette.symbolBoost);
-
-  return (
-    <G
-      key={`stripe-${index}`}
-      opacity={opacity}
-      transform={`rotate(${item.rotate} ${x} ${y})`}>
-      <Line
-        x1={x - size}
-        y1={y - size * 0.16}
-        x2={x + size}
-        y2={y - size * 0.16}
-        stroke={palette.symbol}
-        strokeWidth={4}
-        strokeLinecap="round"
-      />
-      <Line
-        x1={x - size * 0.7}
-        y1={y + size * 0.16}
-        x2={x + size * 0.88}
-        y2={y + size * 0.16}
-        stroke={palette.symbolAlt}
-        strokeWidth={3}
-        strokeLinecap="round"
-      />
-    </G>
-  );
-};
-
-const renderSymbol = (
-  item: SymbolItem,
-  index: number,
-  width: number,
-  height: number,
-  palette: ReturnType<typeof usePalette>,
-) => {
-  if (item.kind === 'button') {
-    return renderButton(item, index, width, height, palette);
-  }
-  if (item.kind === 'dpad') {
-    return renderDpad(item, index, width, height, palette);
-  }
-  if (item.kind === 'nexus') {
-    return renderNexus(item, index, width, height, palette);
-  }
-  return renderStripe(item, index, width, height, palette);
-};
-
-const XboxSymbolBackground = ({isLight, primaryColor}: Props) => {
+const XboxSymbolBackground = ({isLight, primaryColor, themeName}: Props) => {
   const {width, height: windowHeight} = useWindowDimensions();
   const height = windowHeight + BACKGROUND_OVERDRAW;
-  const palette = usePalette(isLight, primaryColor);
 
-  const isTvOrLandscape =
-    Platform.isTV || (width > height && width >= 720);
+  const [liveSettings, setLiveSettings] = React.useState<Settings>(() =>
+    getSettings(),
+  );
 
-  if (isTvOrLandscape) {
-    return (
-      <View
-        pointerEvents="none"
-        style={[styles.tvBackground, {backgroundColor: palette.base}]}
-      />
+  React.useEffect(() => {
+    const sub = DeviceEventEmitter.addListener(
+      SETTINGS_CHANGED_EVENT,
+      (next: Settings) => {
+        if (next) {
+          setLiveSettings({...next});
+        }
+      },
     );
-  }
+    return () => sub.remove();
+  }, []);
+
+  const activeThemeName = themeName || liveSettings.theme;
+  const activePrimaryColor = liveSettings.theme_primary_color || primaryColor;
+
+  const tokens = resolveThemeTokens(
+    isLight ? 'light' : activeThemeName,
+    isLight ? 'light' : 'dark',
+    activePrimaryColor,
+  );
+
+  // Flat, Sleek Glass Studio Horizon (Zero Blade-era curved arcs or concentric rings)
+  const horizonY = Math.round(windowHeight * 0.58);
 
   return (
     <Svg
@@ -362,66 +67,172 @@ const XboxSymbolBackground = ({isLight, primaryColor}: Props) => {
       viewBox={`0 0 ${width} ${height}`}
       style={styles.background}>
       <Defs>
-        <LinearGradient id="xboxBg" x1="0" y1="0" x2="1" y2="1">
-          <Stop offset="0" stopColor={palette.start} />
-          <Stop offset="0.54" stopColor={palette.mid} />
-          <Stop offset="1" stopColor={palette.end} />
+        {/* 1. Upper Atmospheric Glass Studio Wall */}
+        <LinearGradient id="glassWallGrad" x1="0.1" y1="0" x2="0.2" y2="1">
+          <Stop offset="0" stopColor={tokens.stageSkyTop} />
+          <Stop offset="0.42" stopColor={tokens.stageSkyMid} />
+          <Stop offset="0.65" stopColor={tokens.stageHorizon} />
+          <Stop offset="1" stopColor={tokens.stageFloorBottom} />
         </LinearGradient>
-        <RadialGradient id="xboxHazeA" cx="50%" cy="50%" rx="58%" ry="50%">
-          <Stop offset="0" stopColor={palette.washA} stopOpacity="0.86" />
-          <Stop offset="0.48" stopColor={palette.washA} stopOpacity="0.32" />
-          <Stop offset="1" stopColor={palette.washA} stopOpacity="0" />
+
+        {/* 2. Left-Horizon Royal Sapphire & Electric Cyan Studio Bloom */}
+        <RadialGradient
+          id="glassLeftBloom"
+          cx="22%"
+          cy="54%"
+          rx="62%"
+          ry="46%">
+          <Stop
+            offset="0"
+            stopColor={tokens.isLight ? '#FFFFFF' : tokens.accentLime}
+            stopOpacity={
+              tokens.isLight ? '0.62' : tokens.isDarkCarbonStage ? '0.18' : '0.24'
+            }
+          />
+          <Stop
+            offset="0.40"
+            stopColor={tokens.horizonGlow}
+            stopOpacity={tokens.isDarkCarbonStage ? '0.24' : '0.38'}
+          />
+          <Stop
+            offset="0.78"
+            stopColor={tokens.primaryColor}
+            stopOpacity={tokens.isDarkCarbonStage ? '0.12' : '0.18'}
+          />
+          <Stop offset="1" stopColor={tokens.primaryColor} stopOpacity="0" />
         </RadialGradient>
-        <RadialGradient id="xboxHazeB" cx="50%" cy="50%" rx="58%" ry="50%">
-          <Stop offset="0" stopColor={palette.washB} stopOpacity="0.58" />
-          <Stop offset="0.52" stopColor={palette.washB} stopOpacity="0.18" />
-          <Stop offset="1" stopColor={palette.washB} stopOpacity="0" />
+
+        {/* 3. Upper-Right Ambient Cyan & Royal Glow */}
+        <RadialGradient
+          id="glassRightBloom"
+          cx="84%"
+          cy="28%"
+          rx="48%"
+          ry="40%">
+          <Stop
+            offset="0"
+            stopColor={tokens.horizonRim}
+            stopOpacity={tokens.isDarkCarbonStage ? '0.16' : '0.26'}
+          />
+          <Stop
+            offset="0.55"
+            stopColor={tokens.primaryColor}
+            stopOpacity={tokens.isDarkCarbonStage ? '0.10' : '0.18'}
+          />
+          <Stop offset="1" stopColor={tokens.primaryColor} stopOpacity="0" />
         </RadialGradient>
-        <RadialGradient id="xboxHazeC" cx="50%" cy="50%" rx="58%" ry="50%">
-          <Stop offset="0" stopColor={palette.washC} stopOpacity="0.42" />
-          <Stop offset="0.54" stopColor={palette.washC} stopOpacity="0.13" />
-          <Stop offset="1" stopColor={palette.washC} stopOpacity="0" />
+
+        {/* 4. Subtle Diagonal Cyan Glass Light Refraction Beam */}
+        <LinearGradient id="glassLightBeam" x1="0" y1="0" x2="1" y2="1">
+          <Stop
+            offset="0"
+            stopColor={tokens.isLight ? '#FFFFFF' : tokens.horizonRim}
+            stopOpacity="0.10"
+          />
+          <Stop
+            offset="0.45"
+            stopColor={tokens.isLight ? '#FFFFFF' : tokens.primaryColor}
+            stopOpacity="0.04"
+          />
+          <Stop offset="1" stopColor="#000000" stopOpacity="0" />
+        </LinearGradient>
+
+        {/* 5. Deep Royal Frosted Glass Reflective Floor */}
+        <LinearGradient id="glassFloorGrad" x1="0" y1="0" x2="0" y2="1">
+          <Stop offset="0" stopColor={tokens.stageFloorMid} stopOpacity="0.95" />
+          <Stop offset="0.28" stopColor={tokens.stageFloorTop} stopOpacity="0.98" />
+          <Stop offset="1" stopColor={tokens.stageFloorBottom} stopOpacity="1" />
+        </LinearGradient>
+
+        {/* 6. Frosted Floor Cyan & Royal Specular Reflection Wash */}
+        <RadialGradient
+          id="glassFloorSpecular"
+          cx="38%"
+          cy="12%"
+          rx="60%"
+          ry="52%">
+          <Stop
+            offset="0"
+            stopColor={tokens.isLight ? '#FFFFFF' : tokens.accentLime}
+            stopOpacity={
+              tokens.isLight ? '0.36' : tokens.isDarkCarbonStage ? '0.12' : '0.18'
+            }
+          />
+          <Stop
+            offset="0.52"
+            stopColor={tokens.primaryColor}
+            stopOpacity={tokens.isDarkCarbonStage ? '0.08' : '0.16'}
+          />
+          <Stop offset="1" stopColor="#000000" stopOpacity="0" />
         </RadialGradient>
+
+        {/* 7. Electric Cyan Horizon Laser Seam */}
+        <LinearGradient id="glassHorizonSeam" x1="0" y1="0" x2="1" y2="0">
+          <Stop offset="0" stopColor={tokens.accentLime} stopOpacity="0.18" />
+          <Stop offset="0.28" stopColor={tokens.accentLime} stopOpacity="0.82" />
+          <Stop offset="0.68" stopColor={tokens.horizonRim} stopOpacity="0.58" />
+          <Stop offset="1" stopColor={tokens.accentLime} stopOpacity="0.16" />
+        </LinearGradient>
       </Defs>
-      <Rect x="0" y="0" width={width} height={height} fill="url(#xboxBg)" />
-      <Ellipse
-        cx={width * 0.72}
-        cy={height * 0.22}
-        rx={width * 0.5}
-        ry={height * 0.2}
-        fill="url(#xboxHazeA)"
-        opacity={palette.hazeOpacity}
-        transform={`rotate(-12 ${width * 0.72} ${height * 0.22})`}
+
+      {/* Upper Lit Atmospheric Glass Backdrop */}
+      <Rect x="0" y="0" width={width} height={height} fill="url(#glassWallGrad)" />
+
+      {/* Left-Horizon Ice/Glass Studio Bloom */}
+      <Rect
+        x="0"
+        y="0"
+        width={width}
+        height={windowHeight * 0.72}
+        fill="url(#glassLeftBloom)"
       />
-      <Ellipse
-        cx={width * 0.18}
-        cy={height * 0.74}
-        rx={width * 0.48}
-        ry={height * 0.22}
-        fill="url(#xboxHazeB)"
-        opacity={palette.hazeOpacity * 0.78}
-        transform={`rotate(18 ${width * 0.18} ${height * 0.74})`}
+
+      {/* Right-Horizon Ambient Crystalline Glow */}
+      <Rect
+        x="0"
+        y="0"
+        width={width}
+        height={windowHeight * 0.72}
+        fill="url(#glassRightBloom)"
       />
-      <Ellipse
-        cx={width * 0.58}
-        cy={height * 0.62}
-        rx={width * 0.34}
-        ry={height * 0.18}
-        fill="url(#xboxHazeC)"
-        opacity={palette.hazeOpacity * 0.62}
-        transform={`rotate(10 ${width * 0.58} ${height * 0.62})`}
+
+      {/* Subtle Diagonal Glass Light Refraction */}
+      <Path
+        d={`M 0 0 L ${width * 0.62} 0 L ${width * 0.28} ${horizonY} L 0 ${horizonY} Z`}
+        fill="url(#glassLightBeam)"
       />
-      {SYMBOLS.map((item, index) =>
-        renderSymbol(item, index, width, height, palette),
-      )}
+
+      {/* Lower Sleek Frosted Glass Reflective Floor (Flat Horizon) */}
+      <Rect
+        x="0"
+        y={horizonY}
+        width={width}
+        height={height - horizonY}
+        fill="url(#glassFloorGrad)"
+      />
+
+      {/* Specular Reflection Wash on the Frosted Floor */}
+      <Rect
+        x="0"
+        y={horizonY}
+        width={width}
+        height={height - horizonY}
+        fill="url(#glassFloorSpecular)"
+      />
+
+      {/* Razor-Thin Flat Glass Horizon Line */}
+      <Rect
+        x="0"
+        y={horizonY - 0.5}
+        width={width}
+        height={1.2}
+        fill="url(#glassHorizonSeam)"
+      />
     </Svg>
   );
 };
 
 const styles = StyleSheet.create({
-  tvBackground: {
-    ...StyleSheet.absoluteFillObject,
-  },
   background: {
     ...StyleSheet.absoluteFillObject,
     bottom: -BACKGROUND_OVERDRAW,

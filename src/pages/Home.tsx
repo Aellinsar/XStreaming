@@ -12,19 +12,43 @@ import {
   ToastAndroid,
   Linking,
   BackHandler,
+  TouchableOpacity,
+  DeviceEventEmitter,
 } from 'react-native';
-import {Button, Text, Portal, Modal, Card, useTheme} from 'react-native-paper';
+import {
+  Button,
+  Text,
+  Portal,
+  Modal,
+  Card,
+  IconButton,
+  Icon,
+  useTheme,
+} from 'react-native-paper';
 import {useIsFocused} from '@react-navigation/native';
 import RNRestart from 'react-native-restart';
 import ConsoleItem from '../components/ConsoleItem';
 import HomeItem from '../components/HomeItem';
+import {
+  resolveThemeTokens,
+  THEME_PRESET_LIST,
+  THEME_PRESETS,
+} from '../theme/presets';
+import {
+  THEME_PRIMARY_COLOR_OPTIONS,
+  hexToRgba,
+} from '../utils/themeColor';
 import GamepadFooterHints, {
   GamepadHintItem,
 } from '../components/GamepadFooterHints';
 import {enableSystemRotationSuggestions} from '../utils/orientation';
-import {getSettings, saveSettings} from '../store/settingStore';
+import {
+  getSettings,
+  saveSettings,
+  SETTINGS_CHANGED_EVENT,
+  Settings,
+} from '../store/settingStore';
 
-import Authentication from '../Authentication';
 import MsalAuthentication from '../MsalAuthentication';
 import WebApi from '../web';
 import {
@@ -54,14 +78,11 @@ const {UsbRumbleManager, FullScreenManager} = NativeModules;
 const HARMOBY_URL =
   'https://appgallery.huawei.com/app/detail?id=com.lijiahao.xstreamingoh';
 
-const MSAL = 'msal';
-
 function HomeScreen({navigation, route}) {
   const {t} = useTranslation();
   const theme = useTheme();
   const [loading, setLoading] = React.useState(false);
   const [loadingText, setLoadingText] = React.useState('');
-  const [_, setXalUrl] = React.useState('');
   const [consoles, setConsoles] = React.useState<any[]>(() => {
     const cacheData = getConsolesData();
     if (
@@ -78,11 +99,26 @@ function HomeScreen({navigation, route}) {
   const [showUsbWarnModal, setShowUsbWarnShowModal] = React.useState(false);
   const [showHarmonyModal, setShowHarmonyModal] = React.useState(false);
   const [numColumns, setNumColumns] = React.useState(2);
-  const [showLogin, setShowLogin] = React.useState(false);
   const [showMsalLogin, setShowMsalLogin] = React.useState(false);
   const [showMsal, setShowMsal] = React.useState(false);
   const [msalBtnLoading, setMsalBtnLoading] = React.useState(false);
   const [msalData, setMsalData] = React.useState(null);
+  const [showThemeModal, setShowThemeModal] = React.useState(false);
+  const [liveSettings, setLiveSettings] = React.useState<Settings>(() =>
+    getSettings(),
+  );
+
+  React.useEffect(() => {
+    const sub = DeviceEventEmitter.addListener(
+      SETTINGS_CHANGED_EVENT,
+      (next: Settings) => {
+        if (next) {
+          setLiveSettings({...next});
+        }
+      },
+    );
+    return () => sub.remove();
+  }, []);
 
   // Session report modal state
   const [sessionReport, setSessionReport] = React.useState<any>(null);
@@ -117,9 +153,6 @@ function HomeScreen({navigation, route}) {
 
   const authentication = useSelector((state: any) => state.authentication);
   const _authentication = React.useRef(authentication);
-
-  const redirect = useSelector((state: any) => state.redirect);
-  const _redirect = React.useRef(redirect);
 
   const isLogined = useSelector((state: any) => state.isLogined);
   const _isLogined = React.useRef(isLogined);
@@ -222,7 +255,6 @@ function HomeScreen({navigation, route}) {
       setLoadingText(t(stage));
       if (stage === 'Completing login...') {
         setLoading(true);
-        setShowLogin(false);
         setShowMsalLogin(false);
         setShowMsal(false);
       }
@@ -248,7 +280,6 @@ function HomeScreen({navigation, route}) {
         payload: true,
       });
       _isLogined.current = true;
-      setShowLogin(false);
       setShowMsalLogin(false);
       setShowMsal(false);
 
@@ -284,81 +315,42 @@ function HomeScreen({navigation, route}) {
     };
 
     // Auth failed callback
-    const authenticationFailed = (msg: any, rollback = false) => {
+    const authenticationFailed = (msg: any) => {
       setLoading(false);
-      if (rollback) {
-        Alert.alert(t('Error'), t('XalAuthFailDesc') + msg, [
-          {
-            text: t('Confirm'),
-            style: 'default',
-            onPress: () => {
-              _authentication.current = new MsalAuthentication(
-                authenticationCompleted,
-                authenticationFailed,
-                authenticationProgress,
-              );
-              dispatch({
-                type: 'SET_AUTHENTICATION',
-                payload: _authentication.current,
-              });
-              setShowLogin(false);
-              setShowMsalLogin(true);
-              setShowMsal(false);
-            },
+      Alert.alert(t('Error'), t('AuthFailDesc') + msg, [
+        {
+          text: t('Confirm'),
+          style: 'default',
+          onPress: () => {
+            setShowMsalLogin(true);
+            setShowMsal(false);
           },
-        ]);
-      } else {
-        Alert.alert(t('Error'), t('AuthFailDesc') + msg, [
-          {
-            text: t('Confirm'),
-            style: 'default',
-            onPress: () => {
-              RNRestart.restart();
-            },
-          },
-        ]);
-      }
+        },
+      ]);
     };
 
     if (!_authentication.current) {
-      log.info('Authentication initial.');
-
-      _authentication.current = new Authentication(
+      log.info('Authentication initial (MSAL OAuth Device Code).');
+      _authentication.current = new MsalAuthentication(
         authenticationCompleted,
         authenticationFailed,
         authenticationProgress,
       );
       _authentication.current._tokenStore.load();
-
-      if (
-        _settings.use_msal_login ||
-        _authentication.current._tokenStore.getAuthenticationMethod() === MSAL
-      ) {
-        log.info('Using MSAL authentication method.');
-        _authentication.current = new MsalAuthentication(
-          authenticationCompleted,
-          authenticationFailed,
-          authenticationProgress,
-        );
-      }
       dispatch({
         type: 'SET_AUTHENTICATION',
         payload: _authentication.current,
       });
+    } else {
+      // Keep callbacks bound to the active HomeScreen render/instance
+      // so switching to Chrome and returning never invokes a stale closure.
+      _authentication.current._authenticationCompleted =
+        authenticationCompleted;
+      _authentication.current._authenticationFailed = authenticationFailed;
+      _authentication.current._authenticationProgress = authenticationProgress;
     }
 
-    if (route.params?.xalUrl) {
-      if (!_isLogined.current) {
-        log.info('HomeScreen receive xalUrl:', route.params?.xalUrl);
-        setXalUrl(route.params.xalUrl);
-        setLoading(true);
-        setLoadingText(t('Completing login...'));
-        _authentication.current.startAuthflow(
-          _redirect.current,
-          route.params.xalUrl,
-        );
-      }
-    } else if (route.params?.needRefresh && webTokenRef.current) {
+    if (route.params?.needRefresh && webTokenRef.current) {
       if (_xHomeApiRef.current) {
         const webApi = new WebApi(webTokenRef.current);
         _xHomeApiRef.current.getConsoles().then((_consoles: any) => {
@@ -387,45 +379,19 @@ function HomeScreen({navigation, route}) {
         .checkAuthentication()
         .then((isAuth: boolean) => {
           if (!isAuth) {
-            if (_settings.use_msal_login) {
-              setLoading(false);
-              setShowLogin(false);
-              setShowMsalLogin(true);
-              setShowMsal(false);
-            } else {
-              _authentication.current._xal
-                .getRedirectUri()
-                .then((redirectObj: any) => {
-                  setLoading(false);
-                  log.info('Redirect:', redirectObj);
-                  _redirect.current = redirectObj;
-                  dispatch({
-                    type: 'SET_REDIRECT',
-                    payload: redirectObj,
-                  });
-                  setShowLogin(true);
-                  setShowMsalLogin(false);
-                  setShowMsal(false);
-                })
-                .catch(error => {
-                  authenticationFailed(
-                    '[getRedirectUri()] Failed to prepare login:' +
-                      (error?.message || String(error)),
-                    true,
-                  );
-                });
-            }
+            setLoading(false);
+            setShowMsalLogin(true);
+            setShowMsal(false);
           }
         })
         .catch((e: any) => {
           authenticationFailed(
             '[checkAuthentication()] Login check failed:' +
               (e?.message || String(e)),
-            true,
           );
         });
     }
-  }, [route.params?.xalUrl, route.params?.needRefresh, isConnected, isFocused]);
+  }, [route.params?.needRefresh, isConnected, isFocused]);
 
   const handlePoweronAndStream = async sessionId => {
     setLoading(true);
@@ -589,7 +555,6 @@ function HomeScreen({navigation, route}) {
     enabled:
       isFocused &&
       !loading &&
-      !showLogin &&
       !showMsalLogin &&
       !showMsal &&
       !showUsbWarnModal &&
@@ -684,7 +649,7 @@ function HomeScreen({navigation, route}) {
     enabled:
       isFocused &&
       !loading &&
-      (showLogin || showMsalLogin) &&
+      showMsalLogin &&
       !showMsal &&
       !showUsbWarnModal &&
       !showHarmonyModal &&
@@ -698,11 +663,7 @@ function HomeScreen({navigation, route}) {
     },
     onSelect: () => {
       if (focusedLoginBtn === 'login') {
-        if (showLogin) {
-          handleLogin();
-        } else if (showMsalLogin) {
-          handleMsalLogin();
-        }
+        handleMsalLogin();
       } else {
         navigation.navigate('Settings');
       }
@@ -854,14 +815,6 @@ function HomeScreen({navigation, route}) {
     );
   };
 
-  const handleLogin = () => {
-    if (_redirect.current && _redirect.current.sisuAuth) {
-      navigation.navigate('Login', {
-        authUrl: _redirect.current.sisuAuth.MsaOauthRedirect,
-      });
-    }
-  };
-
   const handleMsalLogin = () => {
     setMsalBtnLoading(true);
     _authentication.current
@@ -890,24 +843,263 @@ function HomeScreen({navigation, route}) {
       });
   };
 
-  const renderLogin = () => {
+  const handleSelectThemePreset = (presetId: string) => {
+    const current = getSettings();
+    const presetTokens = THEME_PRESETS[presetId];
+    const nextSettings: Settings = {
+      ...current,
+      theme: presetId,
+      theme_primary_color:
+        presetTokens?.primaryColor || current.theme_primary_color,
+    };
+    saveSettings(nextSettings);
+    setLiveSettings(nextSettings);
+  };
+
+  const handleSelectPrimaryColor = (colorHex: string) => {
+    const current = getSettings();
+    const nextSettings: Settings = {
+      ...current,
+      theme_primary_color: colorHex,
+    };
+    saveSettings(nextSettings);
+    setLiveSettings(nextSettings);
+  };
+
+  const renderThemeStudioModal = () => {
+    if (!showThemeModal) {
+      return null;
+    }
+    const tokens = resolveThemeTokens(
+      liveSettings.theme === 'light' ? 'light' : liveSettings.theme,
+      liveSettings.theme === 'light' ? 'light' : 'dark',
+      liveSettings.theme_primary_color,
+    );
+
+    return (
+      <Portal>
+        <Modal
+          visible={showThemeModal}
+          onDismiss={() => setShowThemeModal(false)}
+          contentContainerStyle={styles.themeModalContainer}>
+          <View
+            style={[
+              styles.themeModalCard,
+              {
+                backgroundColor: tokens.isLight
+                  ? 'rgba(245, 249, 253, 0.96)'
+                  : 'rgba(14, 24, 38, 0.95)',
+                borderColor: tokens.glassBorder,
+              },
+            ]}>
+            <View
+              pointerEvents="none"
+              style={[
+                styles.specularTopBar,
+                {backgroundColor: tokens.glassBorderHighlight},
+              ]}
+            />
+            <View style={styles.themeModalHeader}>
+              <View>
+                <Text
+                  style={[styles.themeModalBadge, {color: tokens.accentLime}]}>
+                  2008 NXE STUDIO • LIVE PREVIEW
+                </Text>
+                <Text
+                  variant="titleLarge"
+                  style={[styles.themeModalTitle, {color: tokens.textPrimary}]}>
+                  Xbox Theme & Main Color
+                </Text>
+              </View>
+              <IconButton
+                icon="close"
+                size={20}
+                iconColor={tokens.textPrimary}
+                onPress={() => setShowThemeModal(false)}
+              />
+            </View>
+
+            <ScrollView
+              style={styles.themeModalScroll}
+              showsVerticalScrollIndicator={false}>
+              <Text
+                style={[styles.themeSectionLabel, {color: tokens.textSecondary}]}>
+                1. SELECT MAIN COLOR (BLUES & XBOX ACCENTS)
+              </Text>
+              <View style={styles.swatchGrid}>
+                {THEME_PRIMARY_COLOR_OPTIONS.map(opt => {
+                  const isSelected =
+                    (
+                      liveSettings.theme_primary_color || tokens.primaryColor
+                    ).toUpperCase() === opt.value.toUpperCase();
+                  const shortName = opt.label.replace(/\s*\(#.*\)$/, '');
+                  return (
+                    <TouchableOpacity
+                      key={opt.value}
+                      activeOpacity={0.8}
+                      onPress={() => handleSelectPrimaryColor(opt.value)}
+                      style={[
+                        styles.swatchPill,
+                        {
+                          borderColor: isSelected
+                            ? '#FFFFFF'
+                            : 'rgba(255,255,255,0.2)',
+                          backgroundColor: isSelected
+                            ? hexToRgba(opt.value, 0.35)
+                            : 'rgba(0,0,0,0.22)',
+                        },
+                      ]}>
+                      <View
+                        style={[
+                          styles.swatchDot,
+                          {backgroundColor: opt.value},
+                        ]}
+                      />
+                      <Text
+                        numberOfLines={1}
+                        style={[
+                          styles.swatchText,
+                          {
+                            color: tokens.textPrimary,
+                            fontWeight: isSelected ? '800' : '600',
+                          },
+                        ]}>
+                        {shortName}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+
+              <Text
+                style={[
+                  styles.themeSectionLabel,
+                  {color: tokens.textSecondary, marginTop: 14},
+                ]}>
+                2. SELECT PRESET THEME STAGE
+              </Text>
+              <View style={styles.presetGrid}>
+                {THEME_PRESET_LIST.map(preset => {
+                  const isSelected = liveSettings.theme === preset.id;
+                  return (
+                    <TouchableOpacity
+                      key={preset.id}
+                      activeOpacity={0.8}
+                      onPress={() => handleSelectThemePreset(preset.id)}
+                      style={[
+                        styles.presetCard,
+                        {
+                          borderColor: isSelected
+                            ? tokens.accentLime
+                            : 'rgba(255,255,255,0.18)',
+                          backgroundColor: isSelected
+                            ? hexToRgba(preset.defaultPrimaryColor, 0.32)
+                            : 'rgba(0,0,0,0.22)',
+                        },
+                      ]}>
+                      <View
+                        style={[
+                          styles.presetColorOrb,
+                          {backgroundColor: preset.defaultPrimaryColor},
+                        ]}
+                      />
+                      <View style={styles.presetTextCol}>
+                        <Text
+                          numberOfLines={1}
+                          style={[
+                            styles.presetTitle,
+                            {color: tokens.textPrimary},
+                          ]}>
+                          {preset.name}
+                        </Text>
+                        <Text
+                          numberOfLines={1}
+                          style={[
+                            styles.presetEra,
+                            {color: tokens.textSecondary},
+                          ]}>
+                          {preset.eraLabel}
+                        </Text>
+                      </View>
+                      {isSelected && (
+                        <Icon
+                          source="check-circle"
+                          size={18}
+                          color={tokens.accentLime}
+                        />
+                      )}
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </ScrollView>
+          </View>
+        </Modal>
+      </Portal>
+    );
+  };
+
+  const renderMsalLogin = () => {
+    const tokens = resolveThemeTokens(
+      liveSettings.theme === 'light' ? 'light' : liveSettings.theme,
+      liveSettings.theme === 'light' ? 'light' : 'dark',
+      liveSettings.theme_primary_color,
+    );
     const isLoginFocused =
       (isGamepadActive || Platform.isTV) && focusedLoginBtn === 'login';
     const isSettingsFocused =
       (isGamepadActive || Platform.isTV) && focusedLoginBtn === 'settings';
 
     return (
-      <View style={styles.loginCard}>
-        <Text style={styles.title}>{t('NoLogin')}</Text>
+      <View
+        style={[
+          styles.loginCard,
+          {
+            backgroundColor: tokens.glassBgElevated,
+            borderColor: tokens.glassBorder,
+          },
+        ]}>
+        <View
+          pointerEvents="none"
+          style={[
+            styles.specularTopBar,
+            {backgroundColor: tokens.glassBorderHighlight},
+          ]}
+        />
+        <View
+          style={[
+            styles.heroLogoOrb,
+            {
+              borderColor: tokens.accentLime,
+              backgroundColor: hexToRgba(tokens.primaryColor, 0.28),
+            },
+          ]}>
+          <Icon
+            source="microsoft-xbox"
+            color={tokens.accentLime}
+            size={36}
+          />
+        </View>
+        <Text
+          variant="headlineSmall"
+          style={[styles.loginTitle, {color: tokens.textPrimary}]}>
+          XStreaming
+        </Text>
+        <Text style={[styles.title, {color: tokens.textSecondary}]}>
+          {t('NoLogin')}
+        </Text>
         <Button
           style={[
             styles.loginButton,
             isLoginFocused && styles.actionButtonFocused,
           ]}
-          mode={isLoginFocused ? 'contained' : 'outlined'}
-          buttonColor={isLoginFocused ? theme.colors.primary : undefined}
-          textColor={isLoginFocused ? '#FFFFFF' : undefined}
-          onPress={handleLogin}>
+          mode="contained"
+          buttonColor={
+            isLoginFocused ? tokens.accentLime : tokens.primaryColor
+          }
+          textColor={isLoginFocused ? '#071204' : '#FFFFFF'}
+          loading={msalBtnLoading}
+          onPress={handleMsalLogin}>
           &nbsp;{t('Login')}&nbsp;
         </Button>
 
@@ -918,45 +1110,8 @@ function HomeScreen({navigation, route}) {
             isSettingsFocused && styles.actionButtonFocused,
           ]}
           mode={isSettingsFocused ? 'contained' : 'text'}
-          buttonColor={isSettingsFocused ? theme.colors.primary : undefined}
-          textColor={isSettingsFocused ? '#FFFFFF' : undefined}
-          onPress={() => navigation.navigate('Settings')}>
-          &nbsp;{t('Settings')}&nbsp;
-        </Button>
-      </View>
-    );
-  };
-
-  const renderMsalLogin = () => {
-    const isLoginFocused =
-      (isGamepadActive || Platform.isTV) && focusedLoginBtn === 'login';
-    const isSettingsFocused =
-      (isGamepadActive || Platform.isTV) && focusedLoginBtn === 'settings';
-
-    return (
-      <View style={styles.loginCard}>
-        <Button
-          style={[
-            styles.loginButton,
-            isLoginFocused && styles.actionButtonFocused,
-          ]}
-          mode={isLoginFocused ? 'contained' : 'outlined'}
-          buttonColor={isLoginFocused ? theme.colors.primary : undefined}
-          textColor={isLoginFocused ? '#FFFFFF' : undefined}
-          loading={msalBtnLoading}
-          onPress={handleMsalLogin}>
-          &nbsp;{t('AuthLogin')}&nbsp;
-        </Button>
-
-        <Button
-          style={[
-            styles.loginButton,
-            styles.mt10,
-            isSettingsFocused && styles.actionButtonFocused,
-          ]}
-          mode={isSettingsFocused ? 'contained' : 'text'}
-          buttonColor={isSettingsFocused ? theme.colors.primary : undefined}
-          textColor={isSettingsFocused ? '#FFFFFF' : undefined}
+          buttonColor={isSettingsFocused ? tokens.primaryColor : undefined}
+          textColor={isSettingsFocused ? '#FFFFFF' : tokens.textSecondary}
           onPress={() => navigation.navigate('Settings')}>
           &nbsp;{t('Settings')}&nbsp;
         </Button>
@@ -965,18 +1120,10 @@ function HomeScreen({navigation, route}) {
   };
 
   const renderContent = () => {
-    if (
-      loading &&
-      consoles.length === 0 &&
-      !showLogin &&
-      !showMsalLogin &&
-      !showMsal
-    ) {
+    if (loading && consoles.length === 0 && !showMsalLogin && !showMsal) {
       return null;
     }
-    if (showLogin) {
-      return <View style={styles.centerContainer}>{renderLogin()}</View>;
-    } else if (showMsalLogin) {
+    if (showMsalLogin) {
       return <View style={styles.centerContainer}>{renderMsalLogin()}</View>;
     } else if (showMsal) {
       return (
@@ -984,6 +1131,7 @@ function HomeScreen({navigation, route}) {
           <MsalAuth
             data={msalData}
             onCancel={() => {
+              _authentication.current?.cancelDeviceCodeAuth?.();
               setShowMsal(false);
               setShowMsalLogin(true);
             }}
@@ -991,6 +1139,15 @@ function HomeScreen({navigation, route}) {
         </View>
       );
     } else {
+      const tokens = resolveThemeTokens(
+        liveSettings.theme === 'light' ? 'light' : liveSettings.theme,
+        liveSettings.theme === 'light' ? 'light' : 'dark',
+        liveSettings.theme_primary_color,
+      );
+      const isWide = width > 640;
+      const totalChannelItems = Math.max(1, consoles.length) + 3;
+      const themeKey = `${liveSettings.theme}:${liveSettings.theme_primary_color}`;
+
       return (
         <SafeAreaView
           style={styles.container}
@@ -1003,12 +1160,154 @@ function HomeScreen({navigation, route}) {
               styles.scrollContent,
               (isGamepadActive || Platform.isTV) && {paddingBottom: 64},
             ]}>
-            <View style={[styles.blockTitle]}>
-              <Text variant="titleLarge" style={styles.blockTitleText}>
-                {t('Consoles')}
-              </Text>
+            {/* Authentic 2008 Xbox 360 NXE Top Stage Header:
+                Left: Receding Stacked Channel Hierarchy -> "• My Xbox"
+                Right: Gamertag / Theme Swatch Pill & Avatar Tile */}
+            <View style={styles.nxeStageTopRow}>
+              <View style={styles.nxeChannelStack}>
+                <TouchableOpacity
+                  activeOpacity={0.7}
+                  onPress={() => navigation.navigate('Settings')}>
+                  <Text
+                    style={[
+                      styles.nxeRecedingChannel3,
+                      {color: tokens.textPrimary},
+                    ]}>
+                    {t('Settings')} & Themes
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  activeOpacity={0.7}
+                  onPress={() => navigation.navigate('Achivements')}>
+                  <Text
+                    style={[
+                      styles.nxeRecedingChannel2,
+                      {color: tokens.textPrimary},
+                    ]}>
+                    {t('Achivements')}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  activeOpacity={0.7}
+                  onPress={() => navigation.navigate('Cloud')}>
+                  <Text
+                    style={[
+                      styles.nxeRecedingChannel1,
+                      {color: tokens.textPrimary},
+                    ]}>
+                    Xbox Cloud Gaming
+                  </Text>
+                </TouchableOpacity>
+                <View style={styles.nxeActiveChannelRow}>
+                  <View
+                    style={[
+                      styles.nxeActiveChannelPip,
+                      {
+                        backgroundColor: tokens.accentLime,
+                        shadowColor: tokens.accentLime,
+                      },
+                    ]}
+                  />
+                  <Text
+                    style={[
+                      styles.nxeActiveChannelTitle,
+                      {color: tokens.textPrimary},
+                    ]}>
+                    My Xbox
+                  </Text>
+                </View>
+              </View>
+
+              {/* Top-Right Gamertag & Live Theme Studio Badge */}
+              <View style={styles.nxeGamertagCluster}>
+                <View style={styles.nxeGamertagTextCol}>
+                  <Text
+                    style={[
+                      styles.nxeGamertagName,
+                      {color: tokens.textPrimary},
+                    ]}>
+                    XStreaming
+                  </Text>
+                  <TouchableOpacity
+                    activeOpacity={0.75}
+                    onPress={() => setShowThemeModal(true)}
+                    style={[
+                      styles.nxeThemeQuickPill,
+                      {borderColor: tokens.glassBorder},
+                    ]}>
+                    <View
+                      style={[
+                        styles.nxeThemeColorDot,
+                        {
+                          backgroundColor: tokens.primaryColor,
+                          borderColor: tokens.accentLime,
+                        },
+                      ]}
+                    />
+                    <Text
+                      style={[
+                        styles.nxeGamerscoreText,
+                        {color: tokens.textPrimary},
+                      ]}>
+                      Theme Studio
+                    </Text>
+                    <View
+                      style={[
+                        styles.nxeGIconCircle,
+                        {backgroundColor: tokens.accentLime},
+                      ]}>
+                      <Icon source="palette" size={11} color="#06102B" />
+                    </View>
+                  </TouchableOpacity>
+                </View>
+
+                {/* Glossy Framed Avatar & Quick Actions */}
+                <TouchableOpacity
+                  activeOpacity={0.8}
+                  onPress={() => setShowThemeModal(true)}
+                  style={[
+                    styles.nxeAvatarTile,
+                    {
+                      backgroundColor: hexToRgba(tokens.primaryColor, 0.48),
+                      borderColor: tokens.glassBorder,
+                    },
+                  ]}>
+                  <Icon
+                    source="palette-outline"
+                    size={22}
+                    color={tokens.accentLime}
+                  />
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  activeOpacity={0.8}
+                  onPress={handleRefreshConsoles}
+                  style={[
+                    styles.nxeAvatarTile,
+                    {
+                      backgroundColor: 'rgba(6, 15, 40, 0.52)',
+                      borderColor: tokens.glassBorder,
+                    },
+                  ]}>
+                  <Icon source="refresh" size={20} color="#FFFFFF" />
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  activeOpacity={0.8}
+                  onPress={() => navigation.navigate('Settings')}
+                  style={[
+                    styles.nxeAvatarTile,
+                    {
+                      backgroundColor: 'rgba(6, 15, 40, 0.52)',
+                      borderColor: tokens.glassBorder,
+                    },
+                  ]}>
+                  <Icon source="cog-outline" size={20} color="#FFFFFF" />
+                </TouchableOpacity>
+              </View>
             </View>
 
+            {/* Primary Console Carousel / Stage */}
             {consoles.length > 0 ? (
               <View style={styles.consoleList}>
                 <View style={styles.consoleGrid}>
@@ -1017,18 +1316,28 @@ function HomeScreen({navigation, route}) {
                       (isGamepadActive || Platform.isTV) &&
                       focusedSection === 'consoles' &&
                       focusedIndex === index;
+                    const isSingleConsole = consoles.length === 1;
+                    const isTwoConsoles = consoles.length === 2;
                     return (
                       <View
                         key={item.serverId || index}
                         style={[
                           styles.consoleItem,
-                          numColumns === 4
+                          isSingleConsole
+                            ? styles.listItemSingle
+                            : isTwoConsoles && isWide
+                            ? styles.listItemV
+                            : numColumns === 4
                             ? styles.listItemH
-                            : styles.listItemV,
+                            : isWide
+                            ? styles.listItemV
+                            : styles.listItemSingle,
                           isItemFocused && {zIndex: 99, overflow: 'visible'},
                         ]}>
                         <ConsoleItem
+                          themeKey={themeKey}
                           isFocused={isItemFocused}
+                          isHero={isSingleConsole}
                           consoleItem={item}
                           onPress={() => handleStartStream(item.serverId)}
                           onPoweronStream={() =>
@@ -1041,11 +1350,39 @@ function HomeScreen({navigation, route}) {
                     );
                   })}
                 </View>
+
+                {/* 2008 NXE Stage Counter ("1 of 4") & "(A) Select" Floor Legend */}
+                <View style={styles.nxeFloorCounterRow}>
+                  <Text style={styles.nxeCounterText}>
+                    1 of {totalChannelItems}
+                  </Text>
+                  <View style={styles.nxeFloorLegendRow}>
+                    <View style={styles.nxeFloorAButton}>
+                      <Text style={styles.nxeFloorAButtonText}>A</Text>
+                    </View>
+                    <Text style={styles.nxeFloorSelectText}>
+                      {t('Select')}
+                    </Text>
+                  </View>
+                </View>
               </View>
             ) : (
               <View style={styles.noConsoles}>
-                <View style={emptyConsoleCardStyle}>
-                  <Text style={styles.emptyConsoleDesc}>{t('NoConsoles')}</Text>
+                <View
+                  style={[
+                    emptyConsoleCardStyle,
+                    {
+                      backgroundColor: tokens.glassBg,
+                      borderColor: tokens.glassBorder,
+                    },
+                  ]}>
+                  <Text
+                    style={[
+                      styles.emptyConsoleDesc,
+                      {color: tokens.textSecondary},
+                    ]}>
+                    {t('NoConsoles')}
+                  </Text>
                   <View style={styles.emptyConsoleActions}>
                     <Button
                       mode={
@@ -1068,17 +1405,12 @@ function HomeScreen({navigation, route}) {
               </View>
             )}
 
-            <View style={styles.blockTitle}>
-              <Text variant="titleLarge" style={styles.blockTitleText}>
-                {t('More')}
-              </Text>
-            </View>
-
+            {/* Adjacent NXE Carousel Tiles (Cloud Gaming, Achievements, Settings) */}
             <View style={styles.moreItems}>
               <View
                 style={[
                   styles.moreItem,
-                  {width: width > 600 ? '15%' : width / 2 - 40},
+                  {width: isWide ? '31.5%' : '100%'},
                   (isGamepadActive || Platform.isTV) &&
                     focusedSection === 'more' &&
                     focusedIndex === 0 && {zIndex: 99, overflow: 'visible'},
@@ -1090,8 +1422,9 @@ function HomeScreen({navigation, route}) {
                     focusedIndex === 0
                   }
                   title={t('Xcloud')}
+                  subtitle="Xbox Cloud Gaming"
                   icon={'google-controller'}
-                  color={'#FFB900'}
+                  color={tokens.tileColors.cloud}
                   onPress={() => navigation.navigate('Cloud')}
                 />
               </View>
@@ -1099,7 +1432,7 @@ function HomeScreen({navigation, route}) {
               <View
                 style={[
                   styles.moreItem,
-                  {width: width > 600 ? '15%' : width / 2 - 40},
+                  {width: isWide ? '31.5%' : '100%'},
                   (isGamepadActive || Platform.isTV) &&
                     focusedSection === 'more' &&
                     focusedIndex === 1 && {zIndex: 99, overflow: 'visible'},
@@ -1111,8 +1444,9 @@ function HomeScreen({navigation, route}) {
                     focusedIndex === 1
                   }
                   title={t('Achivements')}
-                  icon={'trophy'}
-                  color={'#E81123'}
+                  subtitle="Gamerscore & Trophies"
+                  icon={'trophy-outline'}
+                  color={tokens.tileColors.achievements}
                   onPress={() => navigation.navigate('Achivements')}
                 />
               </View>
@@ -1120,7 +1454,7 @@ function HomeScreen({navigation, route}) {
               <View
                 style={[
                   styles.moreItem,
-                  {width: width > 600 ? '15%' : width / 2 - 40},
+                  {width: isWide ? '31.5%' : '100%'},
                   (isGamepadActive || Platform.isTV) &&
                     focusedSection === 'more' &&
                     focusedIndex === 2 && {zIndex: 99, overflow: 'visible'},
@@ -1132,8 +1466,9 @@ function HomeScreen({navigation, route}) {
                     focusedIndex === 2
                   }
                   title={t('Settings')}
+                  subtitle="Display, Audio & Themes"
                   icon={'cog-outline'}
-                  color={'#0078D7'}
+                  color={tokens.tileColors.settings}
                   onPress={() => navigation.navigate('Settings')}
                 />
               </View>
@@ -1155,6 +1490,8 @@ function HomeScreen({navigation, route}) {
       {showUsbWarnModal && renderUsbWarningModal()}
 
       {showHarmonyModal && renderHarmonyModal()}
+
+      {showThemeModal && renderThemeStudioModal()}
 
       {renderContent()}
 
@@ -1182,7 +1519,7 @@ const styles = StyleSheet.create({
   },
   container: {
     flex: 1,
-    paddingTop: 40,
+    paddingTop: 22,
     backgroundColor: 'transparent',
   },
   scrollView: {
@@ -1191,6 +1528,7 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     flexGrow: 1,
+    paddingHorizontal: 14,
   },
   centerContainer: {
     flex: 1,
@@ -1198,76 +1536,334 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 20,
   },
+  specularTopBar: {
+    position: 'absolute',
+    top: 0,
+    left: 16,
+    right: 16,
+    height: 1.5,
+    borderRadius: 2,
+  },
+  heroLogoOrb: {
+    width: 68,
+    height: 68,
+    borderRadius: 34,
+    borderWidth: 1.5,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 12,
+  },
+  loginTitle: {
+    fontWeight: '800',
+    letterSpacing: 0.5,
+    marginBottom: 4,
+  },
   title: {
-    fontSize: 20,
-    marginBottom: 10,
+    fontSize: 15,
+    marginBottom: 20,
     textAlign: 'center',
   },
   loginCard: {
     alignItems: 'center',
     justifyContent: 'center',
     width: '100%',
-    maxWidth: 360,
+    maxWidth: 400,
+    padding: 28,
+    borderRadius: 16,
+    borderWidth: 1.5,
+    overflow: 'hidden',
+    elevation: 10,
   },
   loginButton: {
-    minWidth: 200,
+    minWidth: 220,
+    borderRadius: 10,
+  },
+  // 2008 Xbox 360 NXE Top Stage Header ("My Xbox" Channel Stack + Gamertag Badge)
+  nxeStageTopRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    paddingHorizontal: 10,
+    paddingTop: 4,
+    paddingBottom: 12,
+  },
+  nxeChannelStack: {
+    flexDirection: 'column',
+    alignItems: 'flex-start',
+    paddingLeft: 4,
+  },
+  nxeRecedingChannel3: {
+    fontSize: 12,
+    fontWeight: '600',
+    opacity: 0.34,
+    letterSpacing: 0.2,
+    marginBottom: 1,
+  },
+  nxeRecedingChannel2: {
+    fontSize: 14,
+    fontWeight: '600',
+    opacity: 0.5,
+    letterSpacing: 0.2,
+    marginBottom: 1,
+  },
+  nxeRecedingChannel1: {
+    fontSize: 17,
+    fontWeight: '600',
+    opacity: 0.72,
+    letterSpacing: 0.2,
+    marginBottom: 2,
+  },
+  nxeActiveChannelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginLeft: -12,
+  },
+  nxeActiveChannelPip: {
+    width: 8,
+    height: 8,
+    borderRadius: 2,
+    marginRight: 6,
+    elevation: 4,
+    shadowColor: '#FFFFFF',
+    shadowOpacity: 0.9,
+    shadowRadius: 4,
+  },
+  nxeActiveChannelTitle: {
+    fontSize: 28,
+    fontWeight: '800',
+    letterSpacing: 0.2,
+    textShadowColor: 'rgba(0, 0, 0, 0.35)',
+    textShadowOffset: {width: 0, height: 1},
+    textShadowRadius: 4,
+  },
+  nxeGamertagCluster: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 6,
+  },
+  nxeGamertagTextCol: {
+    alignItems: 'flex-end',
+    marginRight: 10,
+  },
+  nxeGamertagName: {
+    fontSize: 18,
+    fontWeight: '700',
+    letterSpacing: 0.2,
+    textShadowColor: 'rgba(0, 0, 0, 0.35)',
+    textShadowOffset: {width: 0, height: 1},
+    textShadowRadius: 3,
+  },
+  nxeThemeQuickPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 2,
+    backgroundColor: 'rgba(0, 0, 0, 0.24)',
+    borderColor: 'rgba(255, 255, 255, 0.45)',
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+  },
+  nxeThemeColorDot: {
+    width: 9,
+    height: 9,
+    borderRadius: 5,
+    borderWidth: 1,
+    borderColor: '#FFFFFF',
+    marginRight: 5,
+  },
+  nxeGamerscoreText: {
+    fontSize: 12,
+    fontWeight: '700',
+    marginRight: 5,
+  },
+  nxeGIconCircle: {
+    width: 16,
+    height: 16,
     borderRadius: 8,
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  nxeAvatarTile: {
+    width: 44,
+    height: 44,
+    borderRadius: 6,
+    borderWidth: 1.5,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 6,
+    elevation: 4,
+  },
+  // 2008 NXE Stage Floor Counter & "(A) Select" Legend
+  nxeFloorCounterRow: {
+    paddingHorizontal: 10,
+    paddingTop: 2,
+    paddingBottom: 8,
+  },
+  nxeCounterText: {
+    color: 'rgba(255, 255, 255, 0.72)',
+    fontSize: 13,
+    fontWeight: '700',
+    marginBottom: 6,
+  },
+  nxeFloorLegendRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  nxeFloorAButton: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: '#52B043',
+    borderWidth: 1,
+    borderColor: '#D4FF70',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 6,
+  },
+  nxeFloorAButtonText: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: '900',
+  },
+  nxeFloorSelectText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '700',
+    textShadowColor: 'rgba(0, 0, 0, 0.5)',
+    textShadowOffset: {width: 0, height: 1},
+    textShadowRadius: 3,
+  },
+  // Live Theme & Main Color Studio Modal
+  themeModalContainer: {
+    marginHorizontal: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  themeModalCard: {
+    width: '100%',
+    maxWidth: 620,
+    maxHeight: 520,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    overflow: 'hidden',
+    elevation: 18,
+  },
+  themeModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 10,
+  },
+  themeModalBadge: {
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 1.2,
+  },
+  themeModalTitle: {
+    fontWeight: '800',
+    letterSpacing: 0.3,
+  },
+  themeModalScroll: {
+    maxHeight: 410,
+  },
+  themeSectionLabel: {
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 1.0,
+    marginBottom: 8,
+  },
+  swatchGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+  },
+  swatchPill: {
+    width: '48.5%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+    borderWidth: 1.5,
+    marginBottom: 8,
+  },
+  swatchDot: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    borderWidth: 1.5,
+    borderColor: '#FFFFFF',
+    marginRight: 8,
+  },
+  swatchText: {
+    fontSize: 12,
+    flex: 1,
+  },
+  presetGrid: {
+    flexDirection: 'column',
+    paddingBottom: 12,
+  },
+  presetCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    borderWidth: 1.5,
+    marginBottom: 8,
+  },
+  presetColorOrb: {
+    width: 24,
+    height: 24,
+    borderRadius: 6,
+    borderWidth: 1.5,
+    borderColor: '#FFFFFF',
+    marginRight: 12,
+  },
+  presetTextCol: {
+    flex: 1,
+  },
+  presetTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  presetEra: {
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 0.8,
+    marginTop: 1,
   },
   spinnerTextStyle: {
-    color: '#107C10',
+    color: '#0072CE',
     textAlign: 'center',
   },
   menuWrap: {
     width: 250,
   },
   noConsoles: {
-    paddingLeft: 20,
-    paddingRight: 20,
-    paddingBottom: 20,
+    paddingLeft: 8,
+    paddingRight: 8,
+    paddingBottom: 16,
   },
   emptyConsoleCard: {
-    borderRadius: 18,
+    borderRadius: 12,
     padding: 20,
     backgroundColor: 'rgba(255, 255, 255, 0.68)',
-    borderWidth: 1,
+    borderWidth: 1.5,
     borderColor: 'rgba(255, 255, 255, 0.56)',
     overflow: 'hidden',
     elevation: 4,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 10,
-    },
-    shadowOpacity: 0.12,
-    shadowRadius: 24,
   },
   emptyConsoleCardDark: {
-    backgroundColor: 'rgba(18, 20, 32, 0.84)',
-    borderColor: 'rgba(255, 255, 255, 0.12)',
-    shadowOpacity: 0.32,
-  },
-  emptyConsoleHeader: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    marginBottom: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(16, 124, 16, 0.18)',
-    borderWidth: 1,
-    borderColor: 'rgba(16, 124, 16, 0.5)',
-  },
-  emptyConsoleMark: {
-    color: '#8BC34A',
-    fontWeight: '700',
-    fontSize: 16,
-    lineHeight: 18,
-  },
-  emptyConsoleTitle: {
-    marginBottom: 8,
+    backgroundColor: 'rgba(18, 28, 44, 0.84)',
+    borderColor: 'rgba(255, 255, 255, 0.28)',
   },
   emptyConsoleDesc: {
-    opacity: 0.88,
+    opacity: 0.92,
     lineHeight: 20,
     marginBottom: 14,
   },
@@ -1286,9 +1882,8 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.6,
   },
   consoleList: {
-    paddingLeft: 10,
-    paddingRight: 10,
-    paddingBottom: 10,
+    paddingHorizontal: 2,
+    paddingBottom: 6,
   },
   consoleGrid: {
     flexDirection: 'row',
@@ -1296,7 +1891,12 @@ const styles = StyleSheet.create({
   },
   listContainer: {},
   consoleItem: {
-    padding: 10,
+    padding: 6,
+  },
+  listItemSingle: {
+    width: '100%',
+    maxWidth: 760,
+    justifyContent: 'center',
   },
   listItemH: {
     width: '25%',
@@ -1306,29 +1906,17 @@ const styles = StyleSheet.create({
     width: '50%',
     justifyContent: 'center',
   },
-  blockTitle: {
-    paddingLeft: 20,
-    paddingRight: 10,
-    paddingBottom: 10,
-    marginBottom: 10,
-  },
-  blockTitleText: {
-    paddingBottom: 3,
-    borderBottomWidth: 1,
-    borderColor: 'rgba(255, 255, 255, .1)',
-  },
   moreItems: {
-    paddingLeft: 20,
-    paddingRight: 20,
-    paddingBottom: 40,
+    paddingHorizontal: 8,
+    paddingTop: 6,
+    paddingBottom: 44,
     flexDirection: 'row',
     flexWrap: 'wrap',
-    justifyContent: 'flex-start',
+    justifyContent: 'space-between',
   },
   moreItem: {
-    width: '15%',
-    marginRight: 20,
-    marginBottom: 10,
+    width: '31.5%',
+    marginBottom: 12,
   },
   mt10: {
     marginTop: 10,
