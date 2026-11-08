@@ -113,12 +113,15 @@ class webRTCClient {
   };
   _polling_rate = 62.5;
   _maxTouchPoints = 0;
+  _maxVideoBitrate = 0;
+  _maxAudioBitrate = 0;
   _audioLevel = 0;
   _audioEnergySnapshot: AudioEnergySnapshot | null = null;
   _hasAudioLevelSample = false;
   _hasVideoTrack = false;
   _hasAudioTrack = false;
   _hasSentInitialVideoKeyframeRequest = false;
+  _hasEmittedRemoteClose = false;
 
   constructor() {
     console.log('xstreaming Player loaded!');
@@ -245,6 +248,20 @@ class webRTCClient {
           const stereoAudioEnabled =
             (settings as any).enable_stereo_audio === true ||
             (settings as any).enable_stereo_audio === 'true';
+          if (this._maxVideoBitrate > 0 && offer.sdp) {
+            offer.sdp = this._setBitrate(
+              offer.sdp,
+              'video',
+              this._maxVideoBitrate * 1024,
+            );
+          }
+          if (this._maxAudioBitrate > 0 && offer.sdp) {
+            offer.sdp = this._setBitrate(
+              offer.sdp,
+              'audio',
+              this._maxAudioBitrate * 1024,
+            );
+          }
           if (stereoAudioEnabled) {
             offer.sdp = this.forceStereoAudio(offer.sdp);
           }
@@ -253,6 +270,47 @@ class webRTCClient {
           });
         });
     });
+  }
+
+  setVideoBitrate(bitrateMbps: number) {
+    this._maxVideoBitrate = bitrateMbps;
+  }
+
+  setAudioBitrate(bitrateMbps: number) {
+    this._maxAudioBitrate = bitrateMbps;
+  }
+
+  _setBitrate(sdp: string, media: string, bitrateKbps: number): string {
+    const lines = sdp.split('\r\n');
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      if (!line.startsWith(`m=${media}`)) {
+        continue;
+      }
+      const bLine = `b=AS:${bitrateKbps}`;
+      let inserted = false;
+      for (i++; i < lines.length; i++) {
+        const nextLine = lines[i];
+        if (nextLine.startsWith('i=') || nextLine.startsWith('c=')) {
+          continue;
+        }
+        if (nextLine.startsWith('b=AS:')) {
+          lines[i] = bLine;
+          inserted = true;
+          break;
+        }
+        if (nextLine.startsWith('m=') || nextLine.startsWith('a=')) {
+          lines.splice(i, 0, bLine);
+          inserted = true;
+          break;
+        }
+      }
+      if (!inserted) {
+        lines.push(bLine);
+      }
+      break;
+    }
+    return lines.join('\r\n');
   }
 
   setLocalDescription(offer: any) {
@@ -327,6 +385,21 @@ class webRTCClient {
     this._hasVideoTrack = false;
     this._hasAudioTrack = false;
     this._hasSentInitialVideoKeyframeRequest = false;
+    this._hasEmittedRemoteClose = false;
+  }
+
+  _notifyRemoteChannelClosed(channelName: string) {
+    if (
+      this._isResetting ||
+      this._hasEmittedRemoteClose ||
+      (channelName !== 'control' &&
+        channelName !== 'input' &&
+        channelName !== 'message')
+    ) {
+      return;
+    }
+    this._hasEmittedRemoteClose = true;
+    this._connectedHandler && this._connectedHandler('closed');
   }
 
   requestVideoKeyframe(ifrRequested = false) {
@@ -463,6 +536,7 @@ class webRTCClient {
           event,
         );
       }
+      this._notifyRemoteChannelClosed(name);
     });
 
     this._webrtcDataChannels[name].addEventListener('close', (event: any) => {
@@ -478,6 +552,7 @@ class webRTCClient {
           event,
         );
       }
+      this._notifyRemoteChannelClosed(name);
     });
 
     this._webrtcDataChannels[name].addEventListener('error', (event: any) => {
