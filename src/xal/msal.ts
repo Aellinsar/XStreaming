@@ -34,10 +34,15 @@ export default class Msal {
   private readonly _clientId = '1f907974-e22b-4810-a9de-d9647380c97e';
   private _xstsToken?: XstsToken;
   private _gssvToken?: XstsToken;
+  private _activeDeviceCode?: string;
 
   constructor(tokenStore: TokenStore, progress?: (stage: string) => void) {
     this._tokenStore = tokenStore;
     this._progress = progress;
+  }
+
+  cancelDeviceCodeAuth(): void {
+    this._activeDeviceCode = undefined;
   }
 
   getForceIp(): string {
@@ -87,7 +92,13 @@ export default class Msal {
     deviceCode: string,
     timeout = 900 * 1000,
     startTime = Date.now(),
+    isInitial = true,
   ): Promise<Record<string, any>> {
+    if (isInitial) {
+      this._activeDeviceCode = deviceCode;
+    } else if (this._activeDeviceCode !== deviceCode) {
+      throw new Error('Device code polling cancelled');
+    }
     this._progress?.('Waiting for authorization...');
     const data = new URLSearchParams();
     data.append('grant_type', 'urn:ietf:params:oauth:grant-type:device_code');
@@ -112,21 +123,34 @@ export default class Msal {
         },
       );
 
+      if (this._activeDeviceCode !== deviceCode) {
+        throw new Error('Device code polling cancelled');
+      }
+
       const body = response.data;
       const userToken = new UserToken(body);
 
       this._tokenStore.clear();
       this._tokenStore.setUserToken(userToken);
       this._tokenStore.save();
+      this._activeDeviceCode = undefined;
 
       return body;
     } catch (error: any) {
+      if (this._activeDeviceCode !== deviceCode) {
+        throw new Error('Device code polling cancelled');
+      }
       if (Date.now() - startTime >= timeout) {
         throw new Error('doPollForDeviceCodeAuth timeout');
       }
 
       await new Promise<void>(resolve => setTimeout(resolve, 1000));
-      return this.doPollForDeviceCodeAuth(deviceCode, timeout, startTime);
+      return this.doPollForDeviceCodeAuth(
+        deviceCode,
+        timeout,
+        startTime,
+        false,
+      );
     }
   }
 

@@ -1,8 +1,19 @@
 import Msal from './xal/msal';
 import TokenStore from './xal/tokenstore';
 import {debugFactory} from './utils/debug';
-import {clearStreamToken} from './store/streamTokenStore';
-import {clearWebToken} from './store/webTokenStore';
+import StreamingToken from './tokens/streamingtoken';
+import {
+  getStreamToken,
+  saveStreamToken,
+  clearStreamToken,
+  isStreamTokenValid,
+} from './store/streamTokenStore';
+import {
+  getWebToken,
+  saveWebToken,
+  clearWebToken,
+  isWebTokenValid,
+} from './store/webTokenStore';
 
 const log = debugFactory('MsalAuthentication.ts');
 
@@ -32,35 +43,37 @@ export default class MsalAuthentication {
   async checkAuthentication() {
     this._tokenStore.load();
     log.info('[checkAuthentication()] Starting token check...');
-    log.info('[checkAuthentication()]:', this._tokenStore.hasValidAuthTokens());
 
-    if (this._tokenStore.hasValidAuthTokens()) {
-      const existingToken = this._tokenStore.getUserToken();
-      if (existingToken && existingToken.data.scope !== 'XboxLive.signin') {
-        log.info(
-          '[checkAuthentication()] Deprecating old XAL token scope. Starting auth flow to get new tokens.',
-        );
-        return false;
-      }
+    const existingToken = this._tokenStore.getUserToken();
+    if (!existingToken) {
+      log.info('[checkAuthentication()] No tokens are present.');
+      return false;
+    }
 
+    if (
+      this._tokenStore.getAuthenticationMethod() === 'xal' ||
+      existingToken.data.scope !== 'XboxLive.signin'
+    ) {
       log.info(
-        '[checkAuthentication()] Tokens are valid:' +
-          this._tokenStore.getUserToken(),
+        '[checkAuthentication()] Deprecating old XAL token scope. Starting auth flow to get new tokens.',
       );
+      clearStreamToken();
+      clearWebToken();
+      this._tokenStore.clear();
+      return false;
+    }
+
+    if (existingToken.isValid()) {
+      log.info('[checkAuthentication()] MSAL user token is valid.');
       this.startSilentFlow();
       return true;
     }
 
-    if (this._tokenStore.getUserToken() !== undefined) {
-      log.info(
-        '[checkAuthentication()] Tokens are expired but we have a user token. Lets try to refresh the tokens.',
-      );
-      this.startSilentFlow();
-      return true;
-    }
-
-    log.info('[checkAuthentication()] No tokens are present.');
-    return false;
+    log.info(
+      '[checkAuthentication()] MSAL user token is expired, refreshing in silent flow.',
+    );
+    this.startSilentFlow();
+    return true;
   }
 
   startSilentFlow() {
@@ -76,6 +89,29 @@ export default class MsalAuthentication {
 
   async getTokens() {
     try {
+      const streamToken = getStreamToken();
+      const cachedWebToken = getWebToken();
+      const xHomeToken = streamToken?.xHomeToken;
+      const xCloudToken = streamToken?.xCloudToken;
+
+      if (
+        xHomeToken &&
+        isStreamTokenValid(xHomeToken) &&
+        isWebTokenValid(cachedWebToken)
+      ) {
+        this._authenticationProgress?.('Using saved login credentials...');
+        await this._authenticationCompleted(
+          {
+            xHomeToken: new StreamingToken(xHomeToken.data),
+            xCloudToken: xCloudToken
+              ? new StreamingToken(xCloudToken.data)
+              : xCloudToken,
+          },
+          cachedWebToken,
+        );
+        return;
+      }
+
       this._authenticationProgress?.('Getting streaming credentials...');
       const streamingTokens = await this.getStreamingToken();
       log.info('[getTokens()] Retrieved streaming tokens:' + streamingTokens);
@@ -83,6 +119,8 @@ export default class MsalAuthentication {
       this._authenticationProgress?.('Getting web credentials...');
       const webToken = await this._msal.getWebToken();
       log.info('[getTokens()] Web token received:' + webToken);
+      saveStreamToken(streamingTokens);
+      saveWebToken(webToken);
       await this._authenticationCompleted(streamingTokens, webToken);
     } catch (error: any) {
       log.info('[getTokens()] Authentication token request failed:', error);
@@ -123,9 +161,13 @@ export default class MsalAuthentication {
     return this._msal.doDeviceCodeAuth();
   }
 
+  cancelDeviceCodeAuth() {
+    this._msal.cancelDeviceCodeAuth();
+  }
+
   doPollForDeviceCodeAuth(deviceCode: any) {
     this._authenticationProgress?.('Waiting for authorization...');
-    this._msal
+    return this._msal
       .doPollForDeviceCodeAuth(deviceCode)
       .then((token: any) => {
         log.info(
@@ -134,9 +176,15 @@ export default class MsalAuthentication {
         );
 
         this._authenticationProgress?.('Completing login...');
+        clearStreamToken();
+        clearWebToken();
         this.getTokens();
       })
       .catch((error: any) => {
+        if (error?.message === 'Device code polling cancelled') {
+          log.info('[doPollForDeviceCodeAuth()] Polling cancelled by user.');
+          return;
+        }
         log.info(
           '[doPollForDeviceCodeAuth()] Error during devicecode polling auth:' +
             error.message,
