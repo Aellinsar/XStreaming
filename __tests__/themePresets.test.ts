@@ -52,6 +52,11 @@ describe('theme/presets (Deep Royal Blue & Electric Cyan Glass System)', () => {
       expect(preset.tileBottomShade).toMatch(/^#[0-9A-F]{6}$/i);
       expect(preset.glassBg).toContain('rgba(');
       expect(preset.glassBorder).toContain('rgba(');
+      expect(preset.tileColors.cloud).not.toBe(preset.tileColors.achievements);
+      expect(preset.tileColors.achievements).not.toBe(
+        preset.tileColors.settings,
+      );
+      expect(preset.stageHorizon).not.toBe(preset.primaryColor);
     }
   });
 });

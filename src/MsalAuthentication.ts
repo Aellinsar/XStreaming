@@ -50,9 +50,10 @@ export default class MsalAuthentication {
       return false;
     }
 
+    const scopeStr = String(existingToken.data.scope || '');
     if (
       this._tokenStore.getAuthenticationMethod() === 'xal' ||
-      existingToken.data.scope !== 'XboxLive.signin'
+      !/xboxlive\.signin/i.test(scopeStr)
     ) {
       log.info(
         '[checkAuthentication()] Deprecating old XAL token scope. Starting auth flow to get new tokens.',
@@ -102,9 +103,17 @@ export default class MsalAuthentication {
         this._authenticationProgress?.('Using saved login credentials...');
         await this._authenticationCompleted(
           {
-            xHomeToken: new StreamingToken(xHomeToken.data),
+            xHomeToken: new StreamingToken(
+              xHomeToken.data,
+              xHomeToken.offering,
+              xHomeToken._objectCreateTime,
+            ),
             xCloudToken: xCloudToken
-              ? new StreamingToken(xCloudToken.data)
+              ? new StreamingToken(
+                  xCloudToken.data,
+                  xCloudToken.offering,
+                  xCloudToken._objectCreateTime,
+                )
               : xCloudToken,
           },
           cachedWebToken,
@@ -124,13 +133,20 @@ export default class MsalAuthentication {
       await this._authenticationCompleted(streamingTokens, webToken);
     } catch (error: any) {
       log.info('[getTokens()] Authentication token request failed:', error);
-      clearStreamToken();
-      clearWebToken();
-      this._tokenStore.clear();
+      const isPermanentAuthRejection =
+        error?.name === 'TokenRefreshError' ||
+        error?.message === 'sisuTokenIsMissing' ||
+        String(error?.message || '').includes('No refresh token found');
+
+      if (isPermanentAuthRejection) {
+        clearStreamToken();
+        clearWebToken();
+        this._tokenStore.clear();
+      }
       this._authenticationFailed(
         '[MSAL getTokens()] Login failed, please try again:' +
           (error?.message || String(error)),
-        true,
+        isPermanentAuthRejection,
       );
     } finally {
       this._isAuthenticating = false;
@@ -153,6 +169,37 @@ export default class MsalAuthentication {
       xHomeToken: streamingTokens.xHomeToken,
       xCloudToken: streamingTokens.xCloudToken,
     };
+  }
+
+  /**
+   * Generates a 1-tap OAuth 2.0 PKCE authorize URL for Chrome Custom Tabs / System Browser.
+   */
+  getPkceAuthorizeUrl(): string {
+    return this._msal.createPkceAuthUrl();
+  }
+
+  /**
+   * Completes 1-tap OAuth 2.0 PKCE sign-in when `ms-xal-000000004c20a908://auth?code=...` returns.
+   */
+  async handlePkceRedirectUrl(redirectUrl: string): Promise<boolean> {
+    if (!redirectUrl || !redirectUrl.startsWith(Msal.PKCE_REDIRECT_URI)) {
+      return false;
+    }
+    try {
+      this._authenticationProgress?.('Completing login...');
+      await this._msal.exchangePkceRedirectUrl(redirectUrl);
+      clearStreamToken();
+      clearWebToken();
+      await this.getTokens();
+      return true;
+    } catch (error: any) {
+      log.info('[handlePkceRedirectUrl()] PKCE auth error:', error);
+      this._authenticationFailed(
+        '[PKCE Sign-In] ' + (error?.message || String(error)),
+        false,
+      );
+      return false;
+    }
   }
 
   getMsalDeviceCode() {
@@ -189,13 +236,10 @@ export default class MsalAuthentication {
           '[doPollForDeviceCodeAuth()] Error during devicecode polling auth:' +
             error.message,
         );
-        clearStreamToken();
-        clearWebToken();
-        this._tokenStore.clear();
         this._authenticationFailed(
           '[MSAL doPollForDeviceCodeAuth()] Failed to retrieve device code token:' +
             error.message,
-          true,
+          false,
         );
       });
   }

@@ -101,39 +101,62 @@ const SessionReportModal: React.FC<SessionReportModalProps> = ({
 
   const colors = React.useMemo(() => {
     return {
-      cardBg: isDark ? '#121622' : '#FFFFFF',
-      cardBorder: isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.08)',
-      cardShadow: isDark ? '#000000' : 'rgba(0, 0, 0, 0.16)',
-      headerText: isDark ? '#FFFFFF' : '#111827',
-      subCardBg: isDark ? '#161a25' : '#F4F6F8',
-      subCardBorder: isDark ? 'rgba(255, 255, 255, 0.06)' : 'rgba(0, 0, 0, 0.06)',
-      cardHeaderTitle: isDark ? '#8b94a5' : '#4B5563',
-      labelColor: isDark ? '#8e98a8' : '#6B7280',
-      valueColor: isDark ? '#FFFFFF' : '#111827',
-      subInfoColor: isDark ? '#717b8c' : '#9CA3AF',
-      iconColor: isDark ? '#8e98a8' : '#6B7280',
-      checkboxBorder: isDark ? '#606a7c' : '#9CA3AF',
-      checkboxLabel: isDark ? '#8e98a8' : '#374151',
-      gaugeInnerBg: isDark ? '#151923' : '#FFFFFF',
+      backdropScrim: isDark
+        ? 'rgba(2, 6, 18, 0.84)'
+        : 'rgba(15, 23, 42, 0.72)',
+      cardBg: isDark ? '#0B142C' : '#FFFFFF',
+      cardBorder: isDark
+        ? 'rgba(0, 229, 255, 0.52)'
+        : 'rgba(2, 132, 199, 0.38)',
+      topSpecular: isDark ? '#00E5FF' : '#0284C7',
+      headerDivider: isDark
+        ? 'rgba(56, 189, 248, 0.22)'
+        : 'rgba(15, 23, 42, 0.10)',
+      cardShadow: '#000000',
+      headerEyebrow: isDark ? '#00E5FF' : '#0284C7',
+      headerText: isDark ? '#FFFFFF' : '#0F172A',
+      closeBtnBg: isDark
+        ? 'rgba(15, 30, 68, 0.85)'
+        : 'rgba(241, 245, 249, 0.95)',
+      closeBtnBorder: isDark
+        ? 'rgba(0, 229, 255, 0.42)'
+        : 'rgba(148, 163, 184, 0.45)',
+      subCardBg: isDark ? 'rgba(14, 27, 60, 0.88)' : '#F1F5F9',
+      subCardBorder: isDark
+        ? 'rgba(56, 189, 248, 0.24)'
+        : 'rgba(15, 23, 42, 0.09)',
+      cardHeaderTitle: isDark ? '#38BDF8' : '#0369A1',
+      labelColor: isDark ? '#94A3B8' : '#64748B',
+      valueColor: isDark ? '#FFFFFF' : '#0F172A',
+      subInfoColor: isDark ? '#7DD3FC' : '#64748B',
+      iconColor: isDark ? '#38BDF8' : '#0284C7',
+      checkboxBorder: isDark ? '#38BDF8' : '#64748B',
+      checkboxLabel: isDark ? '#CBD5E1' : '#334155',
+      gaugeInnerBg: isDark ? '#091229' : '#FFFFFF',
       gaugeInnerStroke: isDark
-        ? 'rgba(255, 255, 255, 0.12)'
+        ? 'rgba(0, 229, 255, 0.28)'
         : 'rgba(0, 0, 0, 0.10)',
-      scoreTextColor: isDark ? '#FFFFFF' : '#111827',
-      netInfoLabel: isDark ? '#8e98a8' : '#6B7280',
-      netInfoValue: isDark ? '#FFFFFF' : '#111827',
-      doneButtonBg: isDark ? '#27c96a' : (theme.colors.primary || '#107C10'),
+      scoreTextColor: isDark ? '#FFFFFF' : '#0F172A',
+      netInfoLabel: isDark ? '#94A3B8' : '#64748B',
+      netInfoValue: isDark ? '#FFFFFF' : '#0F172A',
+      doneButtonBg: isDark ? '#16A34A' : theme.colors.primary || '#107C10',
+      doneButtonBorder: isDark ? '#4ADE80' : '#22C55E',
       doneButtonText: '#FFFFFF',
-      doneButtonFocusedBorder: isDark ? '#FFFFFF' : '#111827',
-      hintTextColor: isDark ? '#8e98a8' : '#6B7280',
+      doneButtonFocusedBorder: isDark ? '#FFFFFF' : '#0F172A',
+      hintTextColor: isDark ? '#94A3B8' : '#64748B',
       hintKeyBg: isDark ? 'rgba(255, 255, 255, 0.18)' : 'rgba(0, 0, 0, 0.09)',
-      hintKeyText: isDark ? '#FFFFFF' : '#111827',
-      speedArcTrack: isDark ? 'rgba(255, 255, 255, 0.2)' : 'rgba(0, 0, 0, 0.15)',
-      speedArcActive: isDark ? '#FFFFFF' : '#111827',
+      hintKeyText: isDark ? '#FFFFFF' : '#0F172A',
+      speedArcTrack: isDark
+        ? 'rgba(56, 189, 248, 0.24)'
+        : 'rgba(0, 0, 0, 0.15)',
+      speedArcActive: isDark ? '#00E5FF' : '#0284C7',
       fpsBadgeBorder: isDark
-        ? 'rgba(255, 255, 255, 0.25)'
+        ? 'rgba(56, 189, 248, 0.4)'
         : 'rgba(0, 0, 0, 0.20)',
-      fpsBadgeText: isDark ? '#8e98a8' : '#4B5563',
-      heroOverlay: isDark ? 'rgba(10, 14, 23, 0.65)' : 'rgba(15, 23, 42, 0.55)',
+      fpsBadgeText: isDark ? '#38BDF8' : '#0369A1',
+      heroOverlay: isDark
+        ? 'rgba(9, 18, 42, 0.78)'
+        : 'rgba(15, 23, 42, 0.60)',
     };
   }, [isDark, theme.colors.primary]);
 
@@ -148,8 +171,8 @@ const SessionReportModal: React.FC<SessionReportModalProps> = ({
     (screenWidth > screenHeight && screenWidth >= 640);
 
   const modalWidth = isWideScreen
-    ? Math.min(880, screenWidth - 36)
-    : Math.min(380, screenWidth - 28);
+    ? Math.min(860, screenWidth - 44)
+    : Math.min(358, screenWidth - 36);
 
   const handleDonePress = () => {
     onDone(dontShowAgain);
@@ -446,20 +469,34 @@ const SessionReportModal: React.FC<SessionReportModalProps> = ({
       <Modal
         visible={visible}
         onDismiss={onDismiss}
+        style={styles.fullScreenModal}
         contentContainerStyle={[
           styles.modalOverlay,
-          {maxHeight: screenHeight * 0.94},
+          {backgroundColor: colors.backdropScrim},
         ]}>
+        <Pressable
+          style={StyleSheet.absoluteFillObject}
+          onPress={onDismiss}
+        />
         <View
           style={[
             styles.cardContainer,
             {
               width: modalWidth,
+              maxHeight: screenHeight * 0.86,
               backgroundColor: colors.cardBg,
               borderColor: colors.cardBorder,
               shadowColor: colors.cardShadow,
             },
           ]}>
+          {/* Razor-Thin Electric Cyan Top Specular Modal Rim */}
+          <View
+            pointerEvents="none"
+            style={[
+              styles.modalTopSpecular,
+              {backgroundColor: colors.topSpecular},
+            ]}
+          />
           {isWideScreen ? (
             /* ========================================================================= */
             /* 16:9 / ANDROID TV / WIDESCREEN DASHBOARD LAYOUT                          */
@@ -469,11 +506,43 @@ const SessionReportModal: React.FC<SessionReportModalProps> = ({
               bounces={false}
               contentContainerStyle={styles.wideScrollContent}>
               {/* Header Bar */}
-              <View style={styles.wideHeaderRow}>
-                <Text
-                  style={[styles.headerTitleWide, {color: colors.headerText}]}>
-                  {t('Session report')}
-                </Text>
+              <View
+                style={[
+                  styles.wideHeaderRow,
+                  {borderBottomColor: colors.headerDivider},
+                ]}>
+                <View style={styles.modalHeaderLeft}>
+                  <View
+                    style={[
+                      styles.modalHeaderBadgeIcon,
+                      {
+                        backgroundColor: colors.closeBtnBg,
+                        borderColor: colors.closeBtnBorder,
+                      },
+                    ]}>
+                    <Icon
+                      source="speedometer"
+                      size={18}
+                      color={colors.headerEyebrow}
+                    />
+                  </View>
+                  <View>
+                    <Text
+                      style={[
+                        styles.modalEyebrowText,
+                        {color: colors.headerEyebrow},
+                      ]}>
+                      STREAM TELEMETRY
+                    </Text>
+                    <Text
+                      style={[
+                        styles.headerTitleWide,
+                        {color: colors.headerText},
+                      ]}>
+                      {t('Session report')}
+                    </Text>
+                  </View>
+                </View>
 
                 <View style={styles.wideHeaderRight}>
                   <View style={styles.qualityRatingRowWide}>
@@ -509,6 +578,19 @@ const SessionReportModal: React.FC<SessionReportModalProps> = ({
                       {`${report.score} / 100`}
                     </Text>
                   </View>
+
+                  <Pressable
+                    onPress={onDismiss}
+                    hitSlop={8}
+                    style={[
+                      styles.modalCloseButton,
+                      {
+                        backgroundColor: colors.closeBtnBg,
+                        borderColor: colors.closeBtnBorder,
+                      },
+                    ]}>
+                    <Icon source="close" size={16} color={colors.headerText} />
+                  </Pressable>
                 </View>
               </View>
 
@@ -770,16 +852,62 @@ const SessionReportModal: React.FC<SessionReportModalProps> = ({
             </ScrollView>
           ) : (
             /* ========================================================================= */
-            /* PORTRAIT MOBILE LAYOUT                                                   */
+            /* PORTRAIT MOBILE MODAL DIALOG LAYOUT                                       */
             /* ========================================================================= */
             <ScrollView
               showsVerticalScrollIndicator={false}
               contentContainerStyle={styles.scrollContent}>
-              <Text
-                style={[styles.headerTitle, {color: colors.headerText}]}>
-                {t('Session report')}
-              </Text>
+              {/* Elevated Modal Header Bar with Telemetry Badge & Close Button */}
+              <View
+                style={[
+                  styles.portraitModalHeader,
+                  {borderBottomColor: colors.headerDivider},
+                ]}>
+                <View style={styles.modalHeaderLeft}>
+                  <View
+                    style={[
+                      styles.modalHeaderBadgeIcon,
+                      {
+                        backgroundColor: colors.closeBtnBg,
+                        borderColor: colors.closeBtnBorder,
+                      },
+                    ]}>
+                    <Icon
+                      source="speedometer"
+                      size={18}
+                      color={colors.headerEyebrow}
+                    />
+                  </View>
+                  <View>
+                    <Text
+                      style={[
+                        styles.modalEyebrowText,
+                        {color: colors.headerEyebrow},
+                      ]}>
+                      STREAM TELEMETRY
+                    </Text>
+                    <Text
+                      style={[styles.headerTitle, {color: colors.headerText}]}>
+                      {t('Session report')}
+                    </Text>
+                  </View>
+                </View>
 
+                <Pressable
+                  onPress={onDismiss}
+                  hitSlop={8}
+                  style={[
+                    styles.modalCloseButton,
+                    {
+                      backgroundColor: colors.closeBtnBg,
+                      borderColor: colors.closeBtnBorder,
+                    },
+                  ]}>
+                  <Icon source="close" size={17} color={colors.headerText} />
+                </Pressable>
+              </View>
+
+              {/* Compact Horizontal Hero Quality Banner */}
               <View
                 style={[
                   styles.heroCard,
@@ -811,9 +939,6 @@ const SessionReportModal: React.FC<SessionReportModalProps> = ({
                       minimumFontScale={0.75}>
                       {report.gameTitle.toUpperCase()}
                     </Text>
-                  </View>
-
-                  <View style={styles.gaugeWrapper}>
                     <View style={styles.qualityRatingRow}>
                       <Text
                         style={[
@@ -830,19 +955,21 @@ const SessionReportModal: React.FC<SessionReportModalProps> = ({
                         {t(report.qualityText).toUpperCase()}
                       </Text>
                     </View>
+                  </View>
 
-                    <Svg width={68} height={68} viewBox="0 0 68 68">
+                  <View style={styles.gaugeWrapper}>
+                    <Svg width={60} height={60} viewBox="0 0 68 68">
                       <Path
                         d={trackPath}
-                        stroke={`${report.qualityColor}30`}
-                        strokeWidth={4.5}
+                        stroke={`${report.qualityColor}35`}
+                        strokeWidth={5}
                         strokeLinecap="round"
                         fill="none"
                       />
                       <Path
                         d={progressPath}
                         stroke={report.qualityColor}
-                        strokeWidth={4.5}
+                        strokeWidth={5}
                         strokeLinecap="round"
                         fill="none"
                       />
@@ -852,7 +979,7 @@ const SessionReportModal: React.FC<SessionReportModalProps> = ({
                         r={17}
                         fill={colors.gaugeInnerBg}
                         stroke={colors.gaugeInnerStroke}
-                        strokeWidth={1}
+                        strokeWidth={1.2}
                       />
                       <SvgText
                         x={gaugeCx}
@@ -886,7 +1013,7 @@ const SessionReportModal: React.FC<SessionReportModalProps> = ({
                     adjustsFontSizeToFit={true}>
                     {t('NETWORK PERFORMANCE')}
                   </Text>
-                  {renderNetworkPerformanceMetrics(false)}
+                  {renderNetworkPerformanceMetrics(true)}
                 </View>
 
                 <View
@@ -906,7 +1033,7 @@ const SessionReportModal: React.FC<SessionReportModalProps> = ({
                     adjustsFontSizeToFit={true}>
                     {t('SESSION STABILITY')}
                   </Text>
-                  {renderSessionStabilityMetrics(false)}
+                  {renderSessionStabilityMetrics(true)}
                 </View>
               </View>
 
@@ -994,7 +1121,10 @@ const SessionReportModal: React.FC<SessionReportModalProps> = ({
                   onPress={handleDonePress}
                   style={({pressed}) => [
                     styles.donePillButton,
-                    {backgroundColor: colors.doneButtonBg},
+                    {
+                      backgroundColor: colors.doneButtonBg,
+                      borderColor: colors.doneButtonBorder,
+                    },
                     focusedBtn === 'done' &&
                       (isGamepadActive || Platform.isTV) && [
                         styles.donePillButtonFocused,
@@ -1053,78 +1183,128 @@ const SessionReportModal: React.FC<SessionReportModalProps> = ({
 };
 
 const styles = StyleSheet.create({
-  modalOverlay: {
+  fullScreenModal: {
+    margin: 0,
+    padding: 0,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 12,
+  },
+  modalOverlay: {
+    width: '100%',
+    height: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 18,
+    paddingVertical: 24,
   },
   cardContainer: {
-    backgroundColor: '#121622',
-    borderRadius: 24,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.08)',
+    backgroundColor: '#0B142C',
+    borderRadius: 22,
+    borderWidth: 1.5,
+    borderColor: 'rgba(0, 229, 255, 0.52)',
     overflow: 'hidden',
     shadowColor: '#000',
-    shadowOffset: {width: 0, height: 12},
-    shadowOpacity: 0.6,
-    shadowRadius: 24,
-    elevation: 16,
+    shadowOffset: {width: 0, height: 16},
+    shadowOpacity: 0.78,
+    shadowRadius: 28,
+    elevation: 24,
+  },
+  modalTopSpecular: {
+    position: 'absolute',
+    top: 0,
+    left: 18,
+    right: 18,
+    height: 2,
+    borderRadius: 2,
+    zIndex: 10,
   },
   scrollContent: {
     paddingHorizontal: 16,
-    paddingTop: 18,
-    paddingBottom: 20,
+    paddingTop: 14,
+    paddingBottom: 16,
+  },
+  portraitModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingBottom: 10,
+    marginBottom: 10,
+    borderBottomWidth: 1,
+  },
+  modalHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    flex: 1,
+  },
+  modalHeaderBadgeIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalEyebrowText: {
+    fontSize: 9.5,
+    fontWeight: '800',
+    letterSpacing: 1.1,
+    marginBottom: 1,
   },
   headerTitle: {
-    fontFamily: Platform.select({
-      android: 'serif',
-      ios: 'Georgia',
-      default: undefined,
-    }),
-    fontSize: 22,
-    fontWeight: '700',
+    fontSize: 18,
+    fontWeight: '800',
     color: '#FFFFFF',
     letterSpacing: 0.2,
-    marginBottom: 14,
+  },
+  modalCloseButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   heroCard: {
     position: 'relative',
-    height: 140,
-    borderRadius: 16,
+    height: 82,
+    borderRadius: 14,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.08)',
-    marginBottom: 10,
-    backgroundColor: '#161b28',
+    borderColor: 'rgba(56, 189, 248, 0.24)',
+    marginBottom: 8,
+    backgroundColor: '#0F1E42',
   },
   heroPosterFallback: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: '#1a2233',
+    backgroundColor: '#122552',
   },
   heroOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(10, 14, 23, 0.68)',
+    backgroundColor: 'rgba(9, 18, 42, 0.78)',
   },
   heroContent: {
     ...StyleSheet.absoluteFillObject,
+    flexDirection: 'row',
     paddingVertical: 10,
     paddingHorizontal: 14,
     justifyContent: 'space-between',
     alignItems: 'center',
   },
   heroTitleContainer: {
-    width: '100%',
-    alignItems: 'center',
+    flex: 1,
+    marginRight: 10,
+    alignItems: 'flex-start',
     justifyContent: 'center',
   },
   heroGameTitle: {
-    fontSize: 13.5,
+    fontSize: 14,
     fontStyle: 'italic',
     fontWeight: '900',
     color: '#FFFFFF',
     letterSpacing: 0.3,
-    textAlign: 'center',
     lineHeight: 18,
+    marginBottom: 4,
   },
   gaugeWrapper: {
     alignItems: 'center',
@@ -1133,8 +1313,6 @@ const styles = StyleSheet.create({
   qualityRatingRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 2,
   },
   qualityLabelPrefix: {
     fontSize: 10,
@@ -1150,28 +1328,28 @@ const styles = StyleSheet.create({
   metricsTwoColumn: {
     flexDirection: 'row',
     gap: 8,
-    marginBottom: 10,
+    marginBottom: 8,
   },
   metricCard: {
     flex: 1,
-    backgroundColor: '#161a25',
-    borderRadius: 16,
+    backgroundColor: 'rgba(14, 27, 60, 0.88)',
+    borderRadius: 14,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.06)',
-    padding: 12,
+    borderColor: 'rgba(56, 189, 248, 0.24)',
+    padding: 10,
   },
   cardHeaderTitle: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: '#8b94a5',
-    letterSpacing: 0.3,
+    fontSize: 9.5,
+    fontWeight: '800',
+    color: '#38BDF8',
+    letterSpacing: 0.5,
     textTransform: 'uppercase',
-    marginBottom: 10,
-    height: 16,
+    marginBottom: 6,
+    height: 14,
   },
   metricRowContainer: {
-    paddingVertical: 5,
-    marginBottom: 6,
+    paddingVertical: 4,
+    marginBottom: 4,
     justifyContent: 'center',
   },
   metricLabelRow: {
@@ -1187,7 +1365,7 @@ const styles = StyleSheet.create({
     flexShrink: 1,
   },
   metricPrimaryValue: {
-    fontSize: 15,
+    fontSize: 14.5,
     fontWeight: '800',
     color: '#FFFFFF',
     letterSpacing: 0.2,
@@ -1199,12 +1377,12 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   metricSubInfoText: {
-    fontSize: 10,
+    fontSize: 9.5,
     color: '#717b8c',
     fontWeight: '500',
   },
   metricBadgeText: {
-    fontSize: 10,
+    fontSize: 9.5,
     fontWeight: '800',
     letterSpacing: 0.3,
   },
@@ -1224,23 +1402,26 @@ const styles = StyleSheet.create({
     color: '#8e98a8',
   },
   netInfoCard: {
-    backgroundColor: '#161a25',
-    borderRadius: 16,
+    backgroundColor: 'rgba(14, 27, 60, 0.88)',
+    borderRadius: 14,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.06)',
-    padding: 12,
-    marginBottom: 14,
+    borderColor: 'rgba(56, 189, 248, 0.24)',
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    marginBottom: 10,
   },
   netInfoCardTitle: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#8b94a5',
-    marginBottom: 8,
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+    color: '#38BDF8',
+    marginBottom: 4,
   },
   netInfoLine: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 4,
+    marginTop: 3,
   },
   netInfoLabel: {
     fontSize: 11,
@@ -1253,7 +1434,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   footerContainer: {
-    gap: 12,
+    gap: 10,
   },
   checkboxWrapper: {
     flexDirection: 'row',
@@ -1272,8 +1453,8 @@ const styles = StyleSheet.create({
     marginRight: 8,
   },
   checkboxBoxChecked: {
-    backgroundColor: '#27c96a',
-    borderColor: '#27c96a',
+    backgroundColor: '#16A34A',
+    borderColor: '#4ADE80',
   },
   checkboxLabel: {
     fontSize: 12.5,
@@ -1281,34 +1462,36 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   donePillButton: {
-    backgroundColor: '#27c96a',
-    borderRadius: 24,
-    height: 46,
+    backgroundColor: '#16A34A',
+    borderWidth: 1.2,
+    borderColor: '#4ADE80',
+    borderRadius: 14,
+    height: 44,
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: '#27c96a',
+    shadowColor: '#22C55E',
     shadowOffset: {width: 0, height: 4},
     shadowOpacity: 0.35,
     shadowRadius: 8,
-    elevation: 4,
+    elevation: 5,
   },
   donePillButtonPressed: {
-    backgroundColor: '#22ad5b',
+    backgroundColor: '#15803D',
     opacity: 0.9,
   },
   donePillButtonText: {
-    color: '#0e1713',
-    fontSize: 15.5,
+    color: '#FFFFFF',
+    fontSize: 15,
     fontWeight: '800',
     letterSpacing: 0.3,
   },
   checkboxWrapperFocused: {
     borderWidth: 2,
-    borderColor: '#27c96a',
+    borderColor: '#4ADE80',
     borderRadius: 8,
     paddingHorizontal: 8,
     paddingVertical: 4,
-    backgroundColor: 'rgba(39, 201, 106, 0.15)',
+    backgroundColor: 'rgba(34, 197, 94, 0.15)',
   },
   donePillButtonFocused: {
     borderWidth: 2.5,
@@ -1321,7 +1504,7 @@ const styles = StyleSheet.create({
   modalGamepadHints: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingTop: 4,
+    paddingTop: 2,
   },
   modalGamepadHintText: {
     fontSize: 12,
@@ -1347,16 +1530,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 8,
+    paddingBottom: 8,
+    marginBottom: 10,
+    borderBottomWidth: 1,
   },
   headerTitleWide: {
-    fontFamily: Platform.select({
-      android: 'serif',
-      ios: 'Georgia',
-      default: undefined,
-    }),
-    fontSize: 18,
-    fontWeight: '700',
+    fontSize: 17,
+    fontWeight: '800',
     letterSpacing: 0.2,
   },
   wideHeaderRight: {

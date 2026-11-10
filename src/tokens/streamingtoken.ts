@@ -23,10 +23,14 @@ export default class StreamingToken extends Token<StreamingTokenData> {
   public data: StreamingTokenData;
   public offering?: string;
 
-  constructor(tokenData: StreamingTokenData, offering?: string) {
+  constructor(
+    tokenData: StreamingTokenData,
+    offering?: string,
+    objectCreateTime?: number,
+  ) {
     super(tokenData);
     this.data = tokenData;
-    this._objectCreateTime = Date.now();
+    this._objectCreateTime = objectCreateTime ?? Date.now();
     if (offering) {
       this.offering = offering;
     }

@@ -487,45 +487,109 @@ export const buildTitleLookupMap = (items: any[]): Record<string, any> => {
   return map;
 };
 
+// Extract Xbox display gamertag while preserving modern #12345 suffix when present
+export const extractGamertagFromClaimsOrProfile = (obj: any): string => {
+  if (!obj || typeof obj !== 'object') {
+    return '';
+  }
+
+  const umg =
+    typeof obj.uniqueModernGamertag === 'string'
+      ? obj.uniqueModernGamertag.trim()
+      : typeof obj.umg === 'string'
+        ? obj.umg.trim()
+        : '';
+  if (umg) {
+    return umg;
+  }
+
+  const modernBase =
+    typeof obj.modernGamertag === 'string'
+      ? obj.modernGamertag.trim()
+      : typeof obj.mgt === 'string'
+        ? obj.mgt.trim()
+        : '';
+  const modernSuffix =
+    typeof obj.modernGamertagSuffix === 'string'
+      ? obj.modernGamertagSuffix.trim()
+      : typeof obj.mgs === 'string'
+        ? obj.mgs.trim()
+        : '';
+  if (modernBase) {
+    const cleanSuffix = modernSuffix.replace(/^#/, '');
+    return cleanSuffix ? `${modernBase}#${cleanSuffix}` : modernBase;
+  }
+
+  if (typeof obj.Gamertag === 'string' && obj.Gamertag.trim()) {
+    return obj.Gamertag.trim();
+  }
+  if (typeof obj.gamertag === 'string' && obj.gamertag.trim()) {
+    return obj.gamertag.trim();
+  }
+  if (typeof obj.gtg === 'string' && obj.gtg.trim()) {
+    return obj.gtg.trim();
+  }
+
+  return '';
+};
+
 // Resolve Xbox gamertag across tokens and cache
 export const resolveXboxGamertag = (
   fetchedGamertag: string,
   profile: any,
   webToken: any,
   streamingTokens: any,
+  fallback: string = 'Xbox Gamer',
 ): string => {
-  if (fetchedGamertag) {
-    return fetchedGamertag;
-  }
-  if (profile?.Gamertag) {
-    return profile.Gamertag;
-  }
-  if (profile?.gamertag) {
-    return profile.gamertag;
+  if (fetchedGamertag && fetchedGamertag.trim()) {
+    return fetchedGamertag.trim();
   }
 
-  const cachedGtg = storage.getString('user.gamertag');
-  if (cachedGtg) {
-    return cachedGtg;
+  const profileTag = extractGamertagFromClaimsOrProfile(profile);
+  if (profileTag) {
+    return profileTag;
+  }
+
+  const cachedUnique = storage.getString('user.unique_gamertag');
+  if (cachedUnique && cachedUnique.trim()) {
+    return cachedUnique.trim();
   }
 
   const curWebToken = webToken?.data ? webToken : getWebToken();
-  const webGtg = curWebToken?.data?.DisplayClaims?.xui?.[0]?.gtg;
-  if (webGtg) {
-    return webGtg;
+  const webXuiTag = extractGamertagFromClaimsOrProfile(
+    curWebToken?.data?.DisplayClaims?.xui?.[0],
+  );
+  if (webXuiTag) {
+    return webXuiTag;
   }
 
   try {
     const tokenStore = new TokenStore();
     tokenStore.load();
+    const xsts = tokenStore.getXstsToken?.();
+    const xstsTag = extractGamertagFromClaimsOrProfile(
+      xsts?.data?.DisplayClaims?.xui?.[0],
+    );
+    if (xstsTag) {
+      return xstsTag;
+    }
+
     const sisu = tokenStore.getSisuToken();
-    const sisuGtg =
+    const sisuTag =
+      extractGamertagFromClaimsOrProfile(
+        sisu?.data?.AuthorizationToken?.DisplayClaims?.xui?.[0],
+      ) ||
       sisu?.getGamertag?.() ||
-      sisu?.data?.AuthorizationToken?.DisplayClaims?.xui?.[0]?.gtg;
-    if (sisuGtg) {
-      return sisuGtg;
+      '';
+    if (sisuTag) {
+      return String(sisuTag);
     }
   } catch {}
+
+  const cachedGtg = storage.getString('user.gamertag');
+  if (cachedGtg && cachedGtg.trim()) {
+    return cachedGtg.trim();
+  }
 
   if (streamingTokens?.xHomeToken?.getGamertag) {
     const gt = streamingTokens.xHomeToken.getGamertag();
@@ -540,7 +604,64 @@ export const resolveXboxGamertag = (
     }
   }
 
-  return 'Xbox Gamer';
+  return fallback;
+};
+
+export const extractGamerpicFromProfile = (source: any): string => {
+  if (!source || typeof source !== 'object') {
+    return '';
+  }
+  const obj = Array.isArray(source.people)
+    ? source.people[0] || source
+    : source;
+
+  const raw =
+    typeof obj.displayPicRaw === 'string' && obj.displayPicRaw.trim()
+      ? obj.displayPicRaw.trim()
+      : typeof obj.GameDisplayPicRaw === 'string' &&
+          obj.GameDisplayPicRaw.trim()
+        ? obj.GameDisplayPicRaw.trim()
+        : typeof obj.AppDisplayPicRaw === 'string' &&
+            obj.AppDisplayPicRaw.trim()
+          ? obj.AppDisplayPicRaw.trim()
+          : '';
+
+  if (!raw) {
+    return '';
+  }
+
+  const normalized = raw
+    .replace(
+      /^http:\/\/images-eds\.xboxlive\.com\//i,
+      'https://images-eds-ssl.xboxlive.com/',
+    )
+    .replace(/^http:\/\//i, 'https://');
+
+  return /^https:\/\//i.test(normalized) ? normalized : '';
+};
+
+export const resolveXboxGamerpic = (
+  fetchedGamerpic: string,
+  profile: any,
+): string => {
+  const fromFetched = extractGamerpicFromProfile({
+    displayPicRaw: fetchedGamerpic,
+  });
+  if (fromFetched) {
+    return fromFetched;
+  }
+
+  const fromProfile = extractGamerpicFromProfile(profile);
+  if (fromProfile) {
+    return fromProfile;
+  }
+
+  const cachedPic = storage.getString('user.gamerpic');
+  if (cachedPic) {
+    return extractGamerpicFromProfile({displayPicRaw: cachedPic});
+  }
+
+  return '';
 };
 
 export const getCloudSessionTimeLimitSeconds = (params: {

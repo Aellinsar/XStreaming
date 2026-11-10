@@ -7,7 +7,7 @@ import {
   ScrollView,
   Dimensions,
   useWindowDimensions,
-  SafeAreaView,
+  StatusBar,
   NativeModules,
   ToastAndroid,
   Linking,
@@ -15,6 +15,7 @@ import {
   TouchableOpacity,
   DeviceEventEmitter,
 } from 'react-native';
+import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {
   Button,
   Text,
@@ -67,13 +68,24 @@ import {
   getConsolesData,
   isConsolesDataValid,
 } from '../store/consolesStore';
+import {getXcloudData} from '../store/xcloudStore';
+import {clearStreamToken} from '../store/streamTokenStore';
+import {clearWebToken} from '../store/webTokenStore';
+import {storage} from '../store/mmkv';
+import {
+  extractGamertagFromClaimsOrProfile,
+  extractGamerpicFromProfile,
+  resolveXboxGamertag,
+  resolveXboxGamerpic,
+} from '../utils/xcloud';
 import MsalAuth from '../components/MsalAuth';
 import SessionReportModal from '../components/SessionReportModal';
 import Spinner from '../components/Spinner';
 
 const log = debugFactory('HomeScreen');
 
-const {UsbRumbleManager, FullScreenManager} = NativeModules;
+const {UsbRumbleManager, FullScreenManager, NativeUiBridge, GamepadManager} =
+  NativeModules;
 
 const HARMOBY_URL =
   'https://appgallery.huawei.com/app/detail?id=com.lijiahao.xstreamingoh';
@@ -81,6 +93,7 @@ const HARMOBY_URL =
 function HomeScreen({navigation, route}) {
   const {t} = useTranslation();
   const theme = useTheme();
+  const insets = useSafeAreaInsets();
   const [loading, setLoading] = React.useState(false);
   const [loadingText, setLoadingText] = React.useState('');
   const [consoles, setConsoles] = React.useState<any[]>(() => {
@@ -157,7 +170,13 @@ function HomeScreen({navigation, route}) {
   const isLogined = useSelector((state: any) => state.isLogined);
   const _isLogined = React.useRef(isLogined);
 
+  const streamingTokens = useSelector((state: any) => state.streamingTokens);
   const webToken = useSelector((state: any) => state.webToken);
+  const profile = useSelector((state: any) => state.profile);
+  const [fetchedGamertag, setFetchedGamertag] = React.useState('');
+  const [fetchedGamerpic, setFetchedGamerpic] = React.useState(
+    () => storage.getString('user.gamerpic') || '',
+  );
   const webTokenRef = React.useRef(null);
 
   const _xHomeApiRef = React.useRef<any>(null);
@@ -170,6 +189,7 @@ function HomeScreen({navigation, route}) {
     _isFocused.current = isFocused;
     if (isFocused) {
       enableSystemRotationSuggestions();
+      NativeUiBridge?.setRouteScreen?.('home');
     }
   }, [isFocused]);
 
@@ -284,6 +304,48 @@ function HomeScreen({navigation, route}) {
       setShowMsal(false);
 
       const webApi = new WebApi(_webToken);
+      webApi
+        .getUserProfileV2()
+        .then((person: any) => {
+          const uniqueTag = extractGamertagFromClaimsOrProfile(person);
+          if (uniqueTag) {
+            setFetchedGamertag(uniqueTag);
+            storage.set('user.unique_gamertag', uniqueTag);
+          }
+          const picUrl = extractGamerpicFromProfile(person);
+          if (picUrl) {
+            setFetchedGamerpic(picUrl);
+            storage.set('user.gamerpic', picUrl);
+          } else {
+            webApi
+              .getUserProfile()
+              .then((info: any) => {
+                const v1Pic = extractGamerpicFromProfile(info);
+                if (v1Pic) {
+                  setFetchedGamerpic(v1Pic);
+                  storage.set('user.gamerpic', v1Pic);
+                }
+              })
+              .catch(() => {});
+          }
+        })
+        .catch(() => {
+          webApi
+            .getUserProfile()
+            .then((info: any) => {
+              const fallbackTag = extractGamertagFromClaimsOrProfile(info);
+              if (fallbackTag) {
+                setFetchedGamertag(fallbackTag);
+                storage.set('user.unique_gamertag', fallbackTag);
+              }
+              const fallbackPic = extractGamerpicFromProfile(info);
+              if (fallbackPic) {
+                setFetchedGamerpic(fallbackPic);
+                storage.set('user.gamerpic', fallbackPic);
+              }
+            })
+            .catch(() => {});
+        });
 
       try {
         authenticationProgress('Fetching consoles...');
@@ -315,14 +377,16 @@ function HomeScreen({navigation, route}) {
     };
 
     // Auth failed callback
-    const authenticationFailed = (msg: any) => {
+    const authenticationFailed = (msg: any, isPermanentRejection?: boolean) => {
       setLoading(false);
       Alert.alert(t('Error'), t('AuthFailDesc') + msg, [
         {
           text: t('Confirm'),
           style: 'default',
           onPress: () => {
-            setShowMsalLogin(true);
+            if (isPermanentRejection || consoles.length === 0) {
+              setShowMsalLogin(true);
+            }
             setShowMsal(false);
           },
         },
@@ -393,30 +457,33 @@ function HomeScreen({navigation, route}) {
     }
   }, [route.params?.needRefresh, isConnected, isFocused]);
 
+  const ensureAuthReadyForStream = async () => {
+    if (_isLogined.current && (webTokenRef.current || webToken)) {
+      return true;
+    }
+    if (_authentication.current?.checkAuthentication) {
+      try {
+        return await _authentication.current.checkAuthentication();
+      } catch (_e) {
+        return false;
+      }
+    }
+    return false;
+  };
+
   const handlePoweronAndStream = async sessionId => {
     setLoading(true);
     setLoadingText(t('Loading...'));
-    const webApi = new WebApi(webToken);
+    await ensureAuthReadyForStream();
+    const activeWebToken = webTokenRef.current || webToken;
+    const webApi = new WebApi(activeWebToken);
     try {
       const powerOnRes = await webApi.powerOn(sessionId);
       log.info('powerOn:', powerOnRes);
-
-      let _consoles = await _xHomeApiRef.current.getConsoles();
-
-      if (!_consoles.length) {
-        _consoles = await webApi.getConsoles();
-      }
-
-      if (_consoles.length > 0) {
-        setConsoles(_consoles);
-      }
-
       setLoading(false);
-
       handleStartStream(sessionId);
     } catch (e) {
       setLoading(false);
-
       handleStartStream(sessionId);
     }
   };
@@ -477,12 +544,14 @@ function HomeScreen({navigation, route}) {
   };
 
   const handleStartStream = async sessionId => {
+    await ensureAuthReadyForStream();
     const settings = getSettings();
     const hasValidUsbDevice = await UsbRumbleManager.getHasValidUsbDevice();
     const isUsbMode = settings.bind_usb_device && hasValidUsbDevice;
+    const isNativeUi = NativeUiBridge?.isNativeUiEnabled?.() === true;
 
     setCurrentConsoleId(sessionId);
-    if (isUsbMode && !Platform.isTV) {
+    if (isUsbMode && !Platform.isTV && !isNativeUi) {
       setShowUsbWarnShowModal(true);
     } else {
       handleNavigateStream(sessionId);
@@ -494,6 +563,7 @@ function HomeScreen({navigation, route}) {
     const hasValidUsbDevice = await UsbRumbleManager.getHasValidUsbDevice();
     const usbController = await UsbRumbleManager.getUsbController();
     const isUsbMode = settings.bind_usb_device && hasValidUsbDevice;
+    const isNativeUi = NativeUiBridge?.isNativeUiEnabled?.() === true;
 
     const webviewVersion = FullScreenManager.getWebViewVersion();
     const deviceInfos = FullScreenManager.getDeviceInfos();
@@ -510,7 +580,7 @@ function HomeScreen({navigation, route}) {
     }
 
     let routeName = 'Stream';
-    if (settings.render_engine === 'native') {
+    if (isNativeUi || settings.render_engine === 'native') {
       routeName = settings.native_portrait_mode
         ? 'NativePortraitStream'
         : 'NativeStream';
@@ -639,8 +709,8 @@ function HomeScreen({navigation, route}) {
 
   // Focus navigation state for login buttons (when not logged in)
   const [focusedLoginBtn, setFocusedLoginBtn] = React.useState<
-    'login' | 'settings'
-  >('login');
+    'browser' | 'device_code' | 'settings'
+  >(Platform.isTV ? 'device_code' : 'browser');
   const [focusedHarmonyBtn, setFocusedHarmonyBtn] = React.useState<
     'dismiss' | 'install'
   >('install');
@@ -656,13 +726,25 @@ function HomeScreen({navigation, route}) {
       !sessionReport,
     priority: 5,
     onUp: () => {
-      setFocusedLoginBtn('login');
+      setFocusedLoginBtn(prev => {
+        if (prev === 'settings') {
+          return 'device_code';
+        }
+        return Platform.isTV ? 'device_code' : 'browser';
+      });
     },
     onDown: () => {
-      setFocusedLoginBtn('settings');
+      setFocusedLoginBtn(prev => {
+        if (prev === 'browser') {
+          return 'device_code';
+        }
+        return 'settings';
+      });
     },
     onSelect: () => {
-      if (focusedLoginBtn === 'login') {
+      if (focusedLoginBtn === 'browser') {
+        handlePkceBrowserLogin();
+      } else if (focusedLoginBtn === 'device_code') {
         handleMsalLogin();
       } else {
         navigation.navigate('Settings');
@@ -815,6 +897,72 @@ function HomeScreen({navigation, route}) {
     );
   };
 
+  const _lastHandledOAuthRedirectRef = React.useRef<string>('');
+
+  const handleIncomingOAuthUrl = React.useCallback(
+    (incomingUrl?: string | null) => {
+      if (
+        !incomingUrl ||
+        !incomingUrl.startsWith('ms-xal-000000004c20a908://auth')
+      ) {
+        return;
+      }
+      if (_lastHandledOAuthRedirectRef.current === incomingUrl) {
+        return;
+      }
+      _lastHandledOAuthRedirectRef.current = incomingUrl;
+      log.info('Received PKCE OAuth redirect URL');
+      setShowMsalLogin(false);
+      setShowMsal(false);
+      setLoading(true);
+      setLoadingText(t('Completing login...'));
+      _authentication.current?.handlePkceRedirectUrl?.(incomingUrl);
+    },
+    [t],
+  );
+
+  React.useEffect(() => {
+    Linking.getInitialURL()
+      .then(initialUrl => {
+        if (initialUrl) {
+          handleIncomingOAuthUrl(initialUrl);
+        }
+      })
+      .catch(() => {});
+
+    const linkingSub = Linking.addEventListener('url', event => {
+      handleIncomingOAuthUrl(event?.url);
+    });
+
+    const nativeSub = DeviceEventEmitter.addListener(
+      'onOAuthRedirectUrl',
+      (event: {url?: string}) => {
+        handleIncomingOAuthUrl(event?.url);
+      },
+    );
+
+    return () => {
+      linkingSub.remove();
+      nativeSub.remove();
+    };
+  }, [handleIncomingOAuthUrl]);
+
+  const handlePkceBrowserLogin = () => {
+    try {
+      const authUrl = _authentication.current?.getPkceAuthorizeUrl?.();
+      if (authUrl) {
+        Linking.openURL(authUrl);
+      }
+    } catch (e: any) {
+      log.error('PKCE browser login error:', e);
+      Alert.alert(
+        t('Error'),
+        'Browser login error: ' + (e?.message || String(e)),
+        [{text: t('Confirm'), style: 'default'}],
+      );
+    }
+  };
+
   const handleMsalLogin = () => {
     setMsalBtnLoading(true);
     _authentication.current
@@ -865,6 +1013,339 @@ function HomeScreen({navigation, route}) {
     saveSettings(nextSettings);
     setLiveSettings(nextSettings);
   };
+
+  // Synchronize auth, consoles, settings, cloud catalog, achievements, and session report state with Native Android UI (Xbox-14 & Xbox-17)
+  React.useEffect(() => {
+    if (!NativeUiBridge) {
+      return;
+    }
+    try {
+      NativeUiBridge.syncSettings?.(liveSettings as any);
+    } catch (_e) {}
+  }, [liveSettings]);
+
+  const syncNativeCloudCatalog = React.useCallback(() => {
+    if (!NativeUiBridge?.syncCloudTitles) {
+      return;
+    }
+    try {
+      const cached = getXcloudData();
+      const rawTitles = Array.isArray(cached?.titles)
+        ? cached.titles
+        : Array.isArray(cached?.recentTitles)
+          ? cached.recentTitles
+          : [];
+      const mapped = rawTitles.slice(0, 48).map((item: any) => ({
+        titleId: String(item.titleId || item.id || ''),
+        name: String(
+          item.ProductTitle || item.title || item.name || item.titleId || '',
+        ),
+        category: item.isTouchEnabled
+          ? 'Touch + Controller'
+          : 'Xbox Cloud Gaming',
+        subtitle: '60 FPS • AMD FSR 1.0 Ready',
+      }));
+      NativeUiBridge.syncCloudTitles(mapped, false);
+    } catch (_e) {}
+  }, []);
+
+  const syncNativeAchievements = React.useCallback(() => {
+    if (!NativeUiBridge?.syncAchievements) {
+      return;
+    }
+    const token = webTokenRef.current || webToken;
+    if (!token) {
+      return;
+    }
+    try {
+      NativeUiBridge.syncAchievements([], true);
+      const webApi = new WebApi(token);
+      webApi
+        .getHistoryAchivements()
+        .then((data: any) => {
+          const list = Array.isArray(data) ? data : [];
+          const mapped = list.slice(0, 40).map((item: any, idx: number) => ({
+            titleId: String(item.titleId || idx),
+            name: String(item.name || 'Xbox Title'),
+            lastUnlock: String(item.lastUnlock || '').slice(0, 10),
+            currentGamerscore: Number(item.currentGamerscore || 0),
+            maxGamerscore: Number(item.maxGamerscore || 1000),
+          }));
+          NativeUiBridge.syncAchievements(mapped, false);
+        })
+        .catch(() => {
+          NativeUiBridge.syncAchievements([], false);
+        });
+    } catch (_e) {}
+  }, [webToken]);
+
+  React.useEffect(() => {
+    if (isLogined || consoles.length > 0) {
+      syncNativeCloudCatalog();
+      syncNativeAchievements();
+    }
+  }, [isLogined, consoles.length, syncNativeCloudCatalog, syncNativeAchievements]);
+
+  React.useEffect(() => {
+    if (!NativeUiBridge) {
+      return;
+    }
+    try {
+      NativeUiBridge.syncConsoles(Array.isArray(consoles) ? consoles : []);
+    } catch (_e) {}
+  }, [consoles]);
+
+  const resolvedNativeGamertag = React.useMemo(() => {
+    return resolveXboxGamertag(
+      fetchedGamertag,
+      profile,
+      webTokenRef.current || webToken,
+      streamingTokens,
+      '',
+    );
+  }, [fetchedGamertag, profile, webToken, streamingTokens]);
+
+  const resolvedNativeGamerpic = React.useMemo(() => {
+    return resolveXboxGamerpic(fetchedGamerpic, profile);
+  }, [fetchedGamerpic, profile]);
+
+  React.useEffect(() => {
+    const activeToken = webTokenRef.current || webToken;
+    if (!activeToken || fetchedGamerpic) {
+      return;
+    }
+    const webApi = new WebApi(activeToken);
+    webApi
+      .getUserProfileV2()
+      .then((person: any) => {
+        const uniqueTag = extractGamertagFromClaimsOrProfile(person);
+        if (uniqueTag) {
+          setFetchedGamertag(uniqueTag);
+          storage.set('user.unique_gamertag', uniqueTag);
+        }
+        const picUrl = extractGamerpicFromProfile(person);
+        if (picUrl) {
+          setFetchedGamerpic(picUrl);
+          storage.set('user.gamerpic', picUrl);
+        }
+      })
+      .catch(() => {
+        webApi
+          .getUserProfile()
+          .then((info: any) => {
+            const fallbackPic = extractGamerpicFromProfile(info);
+            if (fallbackPic) {
+              setFetchedGamerpic(fallbackPic);
+              storage.set('user.gamerpic', fallbackPic);
+            }
+          })
+          .catch(() => {});
+      });
+  }, [webToken, fetchedGamerpic]);
+
+  React.useEffect(() => {
+    if (!NativeUiBridge) {
+      return;
+    }
+    try {
+      const msalObj: any = msalData;
+      if (showMsal && msalObj?.user_code) {
+        NativeUiBridge.syncAuthState(
+          'device_code_pending',
+          msalObj.message || '',
+          msalObj.user_code || '',
+          msalObj.verification_uri_complete ||
+            msalObj.verification_uri ||
+            'https://microsoft.com/link',
+          resolvedNativeGamertag,
+          resolvedNativeGamerpic,
+        );
+      } else if (isLogined || consoles.length > 0) {
+        NativeUiBridge.syncAuthState(
+          'authenticated',
+          'Signed in to Xbox Network',
+          '',
+          '',
+          resolvedNativeGamertag,
+          resolvedNativeGamerpic,
+        );
+      } else if (showMsalLogin && !loading) {
+        NativeUiBridge.syncAuthState(
+          'unauthenticated',
+          'Sign in to stream from your Xbox or Cloud',
+          '',
+          '',
+          '',
+          '',
+        );
+      } else {
+        NativeUiBridge.syncAuthState(
+          'loading',
+          loadingText || 'Checking Xbox Live tokens...',
+          '',
+          '',
+          resolvedNativeGamertag,
+          resolvedNativeGamerpic,
+        );
+      }
+    } catch (_e) {}
+  }, [
+    showMsal,
+    msalData,
+    isLogined,
+    consoles.length,
+    showMsalLogin,
+    loading,
+    loadingText,
+    resolvedNativeGamertag,
+    resolvedNativeGamerpic,
+  ]);
+
+  React.useEffect(() => {
+    if (!NativeUiBridge || !sessionReport) {
+      return;
+    }
+    try {
+      NativeUiBridge.syncSessionReport({
+        targetName: sessionReport.serverName || 'Xbox Console',
+        streamType: sessionReport.streamType || 'home',
+        durationText: sessionReport.durationText || '0m 00s',
+        avgFps: Number(sessionReport.avgFps || 60),
+        avgBitrateMbps: Number(sessionReport.avgBitrateMbps || 0),
+        avgRttMs: Number(sessionReport.avgRttMs || 0),
+        avgDecodeMs: Number(sessionReport.avgDecodeMs || 0),
+        packetLossPct: Number(sessionReport.packetLossPct || 0),
+        exitReason: sessionReport.exitReason || 'Clean Session Exit',
+      });
+    } catch (_e) {}
+  }, [sessionReport]);
+
+  React.useEffect(() => {
+    if (!NativeUiBridge) {
+      return;
+    }
+    const sub = DeviceEventEmitter.addListener(
+      'onNativeUiCommand',
+      (event: {command?: string; payload?: string}) => {
+        if (!event?.command) {
+          return;
+        }
+        let parsed: any = {};
+        try {
+          parsed = event.payload ? JSON.parse(event.payload) : {};
+        } catch (_e) {}
+
+        switch (event.command) {
+          case 'startConsoleStream': {
+            const serverId = parsed.serverId || consoles[0]?.serverId;
+            if (serverId) {
+              if (parsed.powerOnFirst) {
+                handlePoweronAndStream(serverId);
+              } else {
+                handleStartStream(serverId);
+              }
+            }
+            break;
+          }
+          case 'refreshConsoles':
+            handleRefreshConsoles();
+            break;
+          case 'startMsalLogin':
+            handleMsalLogin();
+            break;
+          case 'startWebLogin':
+            handlePkceBrowserLogin();
+            break;
+          case 'cancelMsalLogin':
+            _authentication.current?.cancelDeviceCodeAuth?.();
+            setShowMsal(false);
+            setShowMsalLogin(true);
+            break;
+          case 'openCloudCatalog':
+            GamepadManager?.setCurrentScreen?.('cloud_catalog');
+            navigation.navigate('Cloud');
+            break;
+          case 'refreshCloudTitles':
+            syncNativeCloudCatalog();
+            break;
+          case 'startCloudStream': {
+            if (parsed.titleId) {
+              const settings = getSettings();
+              const isNativeUi = NativeUiBridge?.isNativeUiEnabled?.() === true;
+              let routeName = 'Stream';
+              if (isNativeUi || settings.render_engine === 'native') {
+                routeName = settings.native_portrait_mode
+                  ? 'NativePortraitStream'
+                  : 'NativeStream';
+              } else if (settings.render_engine === 'nano') {
+                routeName = 'NanoStream';
+              }
+              navigation.navigate({
+                name: routeName,
+                params: {
+                  sessionId: parsed.titleId,
+                  streamType: 'cloud',
+                  settings,
+                },
+              });
+            }
+            break;
+          }
+          case 'openAchievements':
+            GamepadManager?.setCurrentScreen?.('achievements_view');
+            navigation.navigate('Achivements');
+            break;
+          case 'refreshAchievements':
+            syncNativeAchievements();
+            break;
+          case 'signOut':
+            _authentication.current?._tokenStore?.clear?.();
+            clearStreamToken();
+            clearWebToken();
+            storage.delete('user.unique_gamertag');
+            storage.delete('user.gamertag');
+            storage.delete('user.gamerpic');
+            setFetchedGamertag('');
+            setFetchedGamerpic('');
+            _isLogined.current = false;
+            dispatch({type: 'SET_LOGIN', payload: false});
+            setConsoles([]);
+            setShowMsal(false);
+            setShowMsalLogin(true);
+            break;
+          case 'navigateHome':
+            GamepadManager?.setCurrentScreen?.('home');
+            navigation.navigate('Home');
+            break;
+          case 'updateTheme': {
+            const current = getSettings();
+            const nextSettings: Settings = {
+              ...current,
+              theme: parsed.theme_preset || current.theme,
+              theme_primary_color:
+                parsed.primary_color || current.theme_primary_color,
+            };
+            saveSettings(nextSettings);
+            setLiveSettings(nextSettings);
+            break;
+          }
+          case 'updateSetting': {
+            if (parsed.key) {
+              const current = getSettings();
+              const nextSettings: any = {
+                ...current,
+                [parsed.key]: parsed.value,
+              };
+              saveSettings(nextSettings);
+              setLiveSettings(nextSettings);
+            }
+            break;
+          }
+        }
+      },
+    );
+    return () => sub.remove();
+  }, [consoles, navigation]);
 
   const renderThemeStudioModal = () => {
     if (!showThemeModal) {
@@ -1045,8 +1526,10 @@ function HomeScreen({navigation, route}) {
       liveSettings.theme === 'light' ? 'light' : 'dark',
       liveSettings.theme_primary_color,
     );
-    const isLoginFocused =
-      (isGamepadActive || Platform.isTV) && focusedLoginBtn === 'login';
+    const isBrowserFocused =
+      (isGamepadActive || Platform.isTV) && focusedLoginBtn === 'browser';
+    const isDeviceCodeFocused =
+      (isGamepadActive || Platform.isTV) && focusedLoginBtn === 'device_code';
     const isSettingsFocused =
       (isGamepadActive || Platform.isTV) && focusedLoginBtn === 'settings';
 
@@ -1088,19 +1571,48 @@ function HomeScreen({navigation, route}) {
         <Text style={[styles.title, {color: tokens.textSecondary}]}>
           {t('NoLogin')}
         </Text>
+        {!Platform.isTV && (
+          <Button
+            style={[
+              styles.loginButton,
+              isBrowserFocused && styles.actionButtonFocused,
+            ]}
+            mode="contained"
+            buttonColor={
+              isBrowserFocused ? tokens.accentLime : tokens.primaryColor
+            }
+            textColor={isBrowserFocused ? '#071204' : '#FFFFFF'}
+            onPress={handlePkceBrowserLogin}>
+            &nbsp;1-Tap Browser Sign-In&nbsp;
+          </Button>
+        )}
+
         <Button
           style={[
             styles.loginButton,
-            isLoginFocused && styles.actionButtonFocused,
+            !Platform.isTV && styles.mt10,
+            isDeviceCodeFocused && styles.actionButtonFocused,
           ]}
-          mode="contained"
-          buttonColor={
-            isLoginFocused ? tokens.accentLime : tokens.primaryColor
+          mode={
+            Platform.isTV || isDeviceCodeFocused ? 'contained' : 'outlined'
           }
-          textColor={isLoginFocused ? '#071204' : '#FFFFFF'}
+          buttonColor={
+            isDeviceCodeFocused
+              ? tokens.accentLime
+              : Platform.isTV
+                ? tokens.primaryColor
+                : undefined
+          }
+          textColor={
+            isDeviceCodeFocused
+              ? '#071204'
+              : Platform.isTV
+                ? '#FFFFFF'
+                : tokens.textPrimary
+          }
           loading={msalBtnLoading}
           onPress={handleMsalLogin}>
-          &nbsp;{t('Login')}&nbsp;
+          &nbsp;{Platform.isTV ? t('Login') : 'Sign In with Device Code'}&nbsp;
         </Button>
 
         <Button
@@ -1145,63 +1657,34 @@ function HomeScreen({navigation, route}) {
         liveSettings.theme_primary_color,
       );
       const isWide = width > 640;
-      const totalChannelItems = Math.max(1, consoles.length) + 3;
       const themeKey = `${liveSettings.theme}:${liveSettings.theme_primary_color}`;
+      const topSafeInset = Math.max(insets.top, StatusBar.currentHeight || 28);
+      const bottomSafeInset = Math.max(insets.bottom, 20);
 
       return (
-        <SafeAreaView
-          style={styles.container}
+        <View
+          style={[styles.container, {paddingTop: topSafeInset + 8}]}
           onTouchStart={() => {
             if (!Platform.isTV) setIsGamepadActive(false);
           }}>
           <ScrollView
             style={styles.scrollView}
+            showsVerticalScrollIndicator={false}
             contentContainerStyle={[
               styles.scrollContent,
-              (isGamepadActive || Platform.isTV) && {paddingBottom: 64},
+              {
+                paddingBottom:
+                  bottomSafeInset +
+                  (isGamepadActive || Platform.isTV ? 64 : 28),
+              },
             ]}>
-            {/* Authentic 2008 Xbox 360 NXE Top Stage Header:
-                Left: Receding Stacked Channel Hierarchy -> "• My Xbox"
-                Right: Gamertag / Theme Swatch Pill & Avatar Tile */}
-            <View style={styles.nxeStageTopRow}>
-              <View style={styles.nxeChannelStack}>
-                <TouchableOpacity
-                  activeOpacity={0.7}
-                  onPress={() => navigation.navigate('Settings')}>
-                  <Text
-                    style={[
-                      styles.nxeRecedingChannel3,
-                      {color: tokens.textPrimary},
-                    ]}>
-                    {t('Settings')} & Themes
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  activeOpacity={0.7}
-                  onPress={() => navigation.navigate('Achivements')}>
-                  <Text
-                    style={[
-                      styles.nxeRecedingChannel2,
-                      {color: tokens.textPrimary},
-                    ]}>
-                    {t('Achivements')}
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  activeOpacity={0.7}
-                  onPress={() => navigation.navigate('Cloud')}>
-                  <Text
-                    style={[
-                      styles.nxeRecedingChannel1,
-                      {color: tokens.textPrimary},
-                    ]}>
-                    Xbox Cloud Gaming
-                  </Text>
-                </TouchableOpacity>
-                <View style={styles.nxeActiveChannelRow}>
+            {/* Sleek Top Console Dashboard Header Bar (Zero overlap or clipping) */}
+            <View style={styles.dashboardTopRow}>
+              <View style={styles.brandTitleColumn}>
+                <View style={styles.brandEyebrowRow}>
                   <View
                     style={[
-                      styles.nxeActiveChannelPip,
+                      styles.brandLivePip,
                       {
                         backgroundColor: tokens.accentLime,
                         shadowColor: tokens.accentLime,
@@ -1209,100 +1692,104 @@ function HomeScreen({navigation, route}) {
                     ]}
                   />
                   <Text
+                    numberOfLines={1}
                     style={[
-                      styles.nxeActiveChannelTitle,
-                      {color: tokens.textPrimary},
+                      styles.brandEyebrowText,
+                      {color: tokens.accentLime},
                     ]}>
-                    My Xbox
+                    XSTREAMING
                   </Text>
                 </View>
+                <Text
+                  numberOfLines={1}
+                  style={[
+                    styles.dashboardTitle,
+                    {color: tokens.textPrimary},
+                  ]}>
+                  My Xbox
+                </Text>
               </View>
 
-              {/* Top-Right Gamertag & Live Theme Studio Badge */}
-              <View style={styles.nxeGamertagCluster}>
-                <View style={styles.nxeGamertagTextCol}>
-                  <Text
-                    style={[
-                      styles.nxeGamertagName,
-                      {color: tokens.textPrimary},
-                    ]}>
-                    XStreaming
-                  </Text>
-                  <TouchableOpacity
-                    activeOpacity={0.75}
-                    onPress={() => setShowThemeModal(true)}
-                    style={[
-                      styles.nxeThemeQuickPill,
-                      {borderColor: tokens.glassBorder},
-                    ]}>
-                    <View
-                      style={[
-                        styles.nxeThemeColorDot,
-                        {
-                          backgroundColor: tokens.primaryColor,
-                          borderColor: tokens.accentLime,
-                        },
-                      ]}
-                    />
-                    <Text
-                      style={[
-                        styles.nxeGamerscoreText,
-                        {color: tokens.textPrimary},
-                      ]}>
-                      Theme Studio
-                    </Text>
-                    <View
-                      style={[
-                        styles.nxeGIconCircle,
-                        {backgroundColor: tokens.accentLime},
-                      ]}>
-                      <Icon source="palette" size={11} color="#06102B" />
-                    </View>
-                  </TouchableOpacity>
-                </View>
-
-                {/* Glossy Framed Avatar & Quick Actions */}
+              {/* Right Quick Actions: Theme Studio Pill + Refresh + Settings */}
+              <View style={styles.headerActionsCluster}>
                 <TouchableOpacity
-                  activeOpacity={0.8}
+                  activeOpacity={0.78}
                   onPress={() => setShowThemeModal(true)}
                   style={[
-                    styles.nxeAvatarTile,
+                    styles.themeQuickPill,
                     {
-                      backgroundColor: hexToRgba(tokens.primaryColor, 0.48),
+                      backgroundColor: tokens.isLight
+                        ? 'rgba(255, 255, 255, 0.56)'
+                        : 'rgba(6, 15, 40, 0.62)',
                       borderColor: tokens.glassBorder,
                     },
                   ]}>
-                  <Icon
-                    source="palette-outline"
-                    size={22}
-                    color={tokens.accentLime}
+                  <View
+                    style={[
+                      styles.themeColorDot,
+                      {
+                        backgroundColor: tokens.primaryColor,
+                        borderColor: tokens.accentLime,
+                      },
+                    ]}
                   />
+                  <Text
+                    numberOfLines={1}
+                    style={[
+                      styles.themeQuickPillText,
+                      {color: tokens.textPrimary},
+                    ]}>
+                    {isWide ? 'Theme Studio' : 'Theme'}
+                  </Text>
+                  <View
+                    style={[
+                      styles.themeIconBadge,
+                      {backgroundColor: hexToRgba(tokens.accentLime, 0.2)},
+                    ]}>
+                    <Icon
+                      source="palette-outline"
+                      size={13}
+                      color={tokens.accentLime}
+                    />
+                  </View>
                 </TouchableOpacity>
 
                 <TouchableOpacity
                   activeOpacity={0.8}
                   onPress={handleRefreshConsoles}
                   style={[
-                    styles.nxeAvatarTile,
+                    styles.headerIconTile,
                     {
-                      backgroundColor: 'rgba(6, 15, 40, 0.52)',
+                      backgroundColor: tokens.isLight
+                        ? 'rgba(255, 255, 255, 0.56)'
+                        : 'rgba(6, 15, 40, 0.62)',
                       borderColor: tokens.glassBorder,
                     },
                   ]}>
-                  <Icon source="refresh" size={20} color="#FFFFFF" />
+                  <Icon
+                    source="refresh"
+                    size={19}
+                    color={tokens.textPrimary}
+                  />
                 </TouchableOpacity>
 
                 <TouchableOpacity
                   activeOpacity={0.8}
                   onPress={() => navigation.navigate('Settings')}
                   style={[
-                    styles.nxeAvatarTile,
+                    styles.headerIconTile,
                     {
-                      backgroundColor: 'rgba(6, 15, 40, 0.52)',
+                      backgroundColor: tokens.isLight
+                        ? 'rgba(255, 255, 255, 0.56)'
+                        : 'rgba(6, 15, 40, 0.62)',
                       borderColor: tokens.glassBorder,
                     },
                   ]}>
-                  <Icon source="cog-outline" size={20} color="#FFFFFF" />
+                  <Icon
+                    source="cog-outline"
+                    size={19}
+                    color={tokens.textPrimary}
+                  />
                 </TouchableOpacity>
               </View>
             </View>
@@ -1350,21 +1837,6 @@ function HomeScreen({navigation, route}) {
                     );
                   })}
                 </View>
-
-                {/* 2008 NXE Stage Counter ("1 of 4") & "(A) Select" Floor Legend */}
-                <View style={styles.nxeFloorCounterRow}>
-                  <Text style={styles.nxeCounterText}>
-                    1 of {totalChannelItems}
-                  </Text>
-                  <View style={styles.nxeFloorLegendRow}>
-                    <View style={styles.nxeFloorAButton}>
-                      <Text style={styles.nxeFloorAButtonText}>A</Text>
-                    </View>
-                    <Text style={styles.nxeFloorSelectText}>
-                      {t('Select')}
-                    </Text>
-                  </View>
-                </View>
               </View>
             ) : (
               <View style={styles.noConsoles}>
@@ -1405,7 +1877,24 @@ function HomeScreen({navigation, route}) {
               </View>
             )}
 
-            {/* Adjacent NXE Carousel Tiles (Cloud Gaming, Achievements, Settings) */}
+            {/* Section Header for Quick Access Channels */}
+            <View style={styles.sectionDividerRow}>
+              <Text
+                style={[
+                  styles.sectionDividerLabel,
+                  {color: tokens.textSecondary},
+                ]}>
+                CHANNELS & QUICK ACCESS
+              </Text>
+              <View
+                style={[
+                  styles.sectionDividerLine,
+                  {backgroundColor: hexToRgba(tokens.accentLime, 0.24)},
+                ]}
+              />
+            </View>
+
+            {/* Multi-Accent Channel Tiles (Cloud Gaming, Achievements, Settings) */}
             <View style={styles.moreItems}>
               <View
                 style={[
@@ -1474,10 +1963,14 @@ function HomeScreen({navigation, route}) {
               </View>
             </View>
           </ScrollView>
-        </SafeAreaView>
+        </View>
       );
     }
   };
+
+  if (NativeUiBridge?.isNativeUiEnabled?.() === true) {
+    return <View style={styles.root} pointerEvents="none" />;
+  }
 
   return (
     <View
@@ -1519,7 +2012,6 @@ const styles = StyleSheet.create({
   },
   container: {
     flex: 1,
-    paddingTop: 22,
     backgroundColor: 'transparent',
   },
   scrollView: {
@@ -1578,162 +2070,111 @@ const styles = StyleSheet.create({
     minWidth: 220,
     borderRadius: 10,
   },
-  // 2008 Xbox 360 NXE Top Stage Header ("My Xbox" Channel Stack + Gamertag Badge)
-  nxeStageTopRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    paddingHorizontal: 10,
-    paddingTop: 4,
-    paddingBottom: 12,
-  },
-  nxeChannelStack: {
-    flexDirection: 'column',
-    alignItems: 'flex-start',
-    paddingLeft: 4,
-  },
-  nxeRecedingChannel3: {
-    fontSize: 12,
-    fontWeight: '600',
-    opacity: 0.34,
-    letterSpacing: 0.2,
-    marginBottom: 1,
-  },
-  nxeRecedingChannel2: {
-    fontSize: 14,
-    fontWeight: '600',
-    opacity: 0.5,
-    letterSpacing: 0.2,
-    marginBottom: 1,
-  },
-  nxeRecedingChannel1: {
-    fontSize: 17,
-    fontWeight: '600',
-    opacity: 0.72,
-    letterSpacing: 0.2,
-    marginBottom: 2,
-  },
-  nxeActiveChannelRow: {
+  // Sleek Top Console Dashboard Header Bar
+  dashboardTopRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginLeft: -12,
+    justifyContent: 'space-between',
+    paddingHorizontal: 6,
+    paddingTop: 2,
+    paddingBottom: 12,
   },
-  nxeActiveChannelPip: {
-    width: 8,
-    height: 8,
-    borderRadius: 2,
+  brandTitleColumn: {
+    flex: 1,
+    marginRight: 10,
+    justifyContent: 'center',
+  },
+  brandEyebrowRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 2,
+  },
+  brandLivePip: {
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
     marginRight: 6,
-    elevation: 4,
-    shadowColor: '#FFFFFF',
-    shadowOpacity: 0.9,
+    elevation: 3,
+    shadowColor: '#00E5FF',
+    shadowOpacity: 0.85,
     shadowRadius: 4,
   },
-  nxeActiveChannelTitle: {
-    fontSize: 28,
+  brandEyebrowText: {
+    fontSize: 10.5,
+    fontWeight: '800',
+    letterSpacing: 1.4,
+  },
+  dashboardTitle: {
+    fontSize: 25,
     fontWeight: '800',
     letterSpacing: 0.2,
     textShadowColor: 'rgba(0, 0, 0, 0.35)',
     textShadowOffset: {width: 0, height: 1},
     textShadowRadius: 4,
   },
-  nxeGamertagCluster: {
+  headerActionsCluster: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 6,
+    flexShrink: 0,
+    gap: 8,
   },
-  nxeGamertagTextCol: {
-    alignItems: 'flex-end',
-    marginRight: 10,
-  },
-  nxeGamertagName: {
-    fontSize: 18,
-    fontWeight: '700',
-    letterSpacing: 0.2,
-    textShadowColor: 'rgba(0, 0, 0, 0.35)',
-    textShadowOffset: {width: 0, height: 1},
-    textShadowRadius: 3,
-  },
-  nxeThemeQuickPill: {
+  themeQuickPill: {
+    height: 38,
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 2,
-    backgroundColor: 'rgba(0, 0, 0, 0.24)',
-    borderColor: 'rgba(255, 255, 255, 0.45)',
-    borderWidth: 1,
-    borderRadius: 999,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-  },
-  nxeThemeColorDot: {
-    width: 9,
-    height: 9,
-    borderRadius: 5,
-    borderWidth: 1,
-    borderColor: '#FFFFFF',
-    marginRight: 5,
-  },
-  nxeGamerscoreText: {
-    fontSize: 12,
-    fontWeight: '700',
-    marginRight: 5,
-  },
-  nxeGIconCircle: {
-    width: 16,
-    height: 16,
-    borderRadius: 8,
-    backgroundColor: '#FFFFFF',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  nxeAvatarTile: {
-    width: 44,
-    height: 44,
-    borderRadius: 6,
-    borderWidth: 1.5,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginLeft: 6,
+    borderWidth: 1.2,
+    borderRadius: 12,
+    paddingLeft: 10,
+    paddingRight: 7,
     elevation: 4,
   },
-  // 2008 NXE Stage Floor Counter & "(A) Select" Legend
-  nxeFloorCounterRow: {
-    paddingHorizontal: 10,
-    paddingTop: 2,
-    paddingBottom: 8,
-  },
-  nxeCounterText: {
-    color: 'rgba(255, 255, 255, 0.72)',
-    fontSize: 13,
-    fontWeight: '700',
-    marginBottom: 6,
-  },
-  nxeFloorLegendRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  nxeFloorAButton: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: '#52B043',
-    borderWidth: 1,
-    borderColor: '#D4FF70',
-    alignItems: 'center',
-    justifyContent: 'center',
+  themeColorDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    borderWidth: 1.2,
+    borderColor: '#FFFFFF',
     marginRight: 6,
   },
-  nxeFloorAButtonText: {
-    color: '#FFFFFF',
-    fontSize: 11,
-    fontWeight: '900',
+  themeQuickPillText: {
+    fontSize: 12.5,
+    fontWeight: '800',
+    marginRight: 6,
   },
-  nxeFloorSelectText: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '700',
-    textShadowColor: 'rgba(0, 0, 0, 0.5)',
-    textShadowOffset: {width: 0, height: 1},
-    textShadowRadius: 3,
+  themeIconBadge: {
+    width: 22,
+    height: 22,
+    borderRadius: 7,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerIconTile: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    borderWidth: 1.2,
+    alignItems: 'center',
+    justifyContent: 'center',
+    elevation: 4,
+  },
+  sectionDividerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    marginTop: 10,
+    marginBottom: 8,
+  },
+  sectionDividerLabel: {
+    fontSize: 10.5,
+    fontWeight: '800',
+    letterSpacing: 1.2,
+    marginRight: 10,
+    opacity: 0.85,
+  },
+  sectionDividerLine: {
+    flex: 1,
+    height: 1,
+    borderRadius: 1,
   },
   // Live Theme & Main Color Studio Modal
   themeModalContainer: {
@@ -1907,16 +2348,16 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   moreItems: {
-    paddingHorizontal: 8,
-    paddingTop: 6,
-    paddingBottom: 44,
+    paddingHorizontal: 6,
+    paddingTop: 2,
+    paddingBottom: 12,
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'space-between',
   },
   moreItem: {
     width: '31.5%',
-    marginBottom: 12,
+    marginBottom: 10,
   },
   mt10: {
     marginTop: 10,

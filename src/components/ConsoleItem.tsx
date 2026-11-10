@@ -40,8 +40,12 @@ const ConsoleItem = (props: any) => {
   const consoleItem = props.consoleItem;
   const {width} = useWindowDimensions();
   const isWide = width > 640;
-  const isHero = !!props.isHero && isWide;
+  const isSingleHero = !!props.isHero;
   const isFocused = !!props.isFocused;
+  const uid = String(consoleItem?.serverId || 'default').replace(
+    /[^a-zA-Z0-9_-]/g,
+    '',
+  );
 
   const consoleLabel =
     consoleItem.consoleType === 'XboxSeriesX'
@@ -55,8 +59,18 @@ const ConsoleItem = (props: any) => {
   const statusColor = isOnline
     ? '#4ADE80'
     : isStandby
-    ? tokens.accentLime
-    : '#FCA5A5';
+    ? '#FBBF24'
+    : '#FB7185';
+  const statusBgColor = isOnline
+    ? 'rgba(16, 185, 129, 0.22)'
+    : isStandby
+    ? 'rgba(245, 158, 11, 0.22)'
+    : 'rgba(244, 63, 94, 0.20)';
+  const statusBorderColor = isOnline
+    ? 'rgba(74, 222, 128, 0.68)'
+    : isStandby
+    ? 'rgba(251, 191, 36, 0.68)'
+    : 'rgba(251, 113, 133, 0.58)';
   const statusText = isOnline
     ? t('Powered on').toUpperCase()
     : isStandby
@@ -84,7 +98,7 @@ const ConsoleItem = (props: any) => {
           style={[
             styles.consoleImage,
             isWide && styles.consoleImageWide,
-            isHero && styles.consoleImageHero,
+            isSingleHero && isWide && styles.consoleImageHero,
           ]}
           resizeMode="contain"
         />
@@ -96,13 +110,13 @@ const ConsoleItem = (props: any) => {
           style={[
             styles.consoleImage,
             isWide && styles.consoleImageWide,
-            isHero && styles.consoleImageHero,
+            isSingleHero && isWide && styles.consoleImageHero,
           ]}
           resizeMode="contain"
         />
       );
     } else {
-      return <SvgXml xml={icons.ConsoleIcon} width={96} height={96} />;
+      return <SvgXml xml={icons.ConsoleIcon} width={88} height={88} />;
     }
   };
 
@@ -115,8 +129,8 @@ const ConsoleItem = (props: any) => {
           styles.glassTile,
           {
             backgroundColor: tokens.isLight
-              ? 'rgba(255, 255, 255, 0.34)'
-              : 'rgba(8, 18, 48, 0.44)',
+              ? 'rgba(255, 255, 255, 0.42)'
+              : 'rgba(8, 18, 48, 0.56)',
             borderColor: isFocused
               ? tokens.accentLime
               : tokens.glassBorder,
@@ -134,57 +148,79 @@ const ConsoleItem = (props: any) => {
           pointerEvents="none"
           width="100%"
           height="100%"
-          viewBox="0 0 400 240"
+          viewBox="0 0 400 220"
           preserveAspectRatio="none"
           style={StyleSheet.absoluteFillObject}>
           <Defs>
             {/* Deep Royal Sapphire Translucent Glass Body */}
-            <LinearGradient id="glassConsoleBody" x1="0" y1="0" x2="0.85" y2="1">
+            <LinearGradient
+              id={`glassConsoleBody_${uid}`}
+              x1="0"
+              y1="0"
+              x2="0.85"
+              y2="1">
               <Stop
                 offset="0"
                 stopColor={tileTop}
-                stopOpacity={tokens.isDarkCarbonStage ? '0.48' : '0.58'}
+                stopOpacity={tokens.isDarkCarbonStage ? '0.52' : '0.62'}
               />
               <Stop
                 offset="0.52"
                 stopColor={tileMid}
-                stopOpacity={tokens.isDarkCarbonStage ? '0.38' : '0.48'}
+                stopOpacity={tokens.isDarkCarbonStage ? '0.42' : '0.52'}
               />
               <Stop
                 offset="1"
                 stopColor={tileBottom}
-                stopOpacity={tokens.isDarkCarbonStage ? '0.54' : '0.64'}
+                stopOpacity={tokens.isDarkCarbonStage ? '0.58' : '0.68'}
               />
             </LinearGradient>
 
             {/* Top-Left Electric Cyan Frost Bloom */}
             <RadialGradient
-              id="glassConsoleFrost"
-              cx="24%"
-              cy="14%"
+              id={`glassConsoleFrost_${uid}`}
+              cx="22%"
+              cy="28%"
               rx="58%"
-              ry="52%">
+              ry="60%">
               <Stop
                 offset="0"
                 stopColor={tokens.horizonRim}
-                stopOpacity="0.24"
+                stopOpacity="0.28"
               />
               <Stop
                 offset="0.55"
                 stopColor={tokens.primaryColor}
-                stopOpacity="0.10"
+                stopOpacity="0.12"
               />
               <Stop offset="1" stopColor={tokens.primaryColor} stopOpacity="0" />
             </RadialGradient>
 
+            {/* Bottom-Right Subtle Emerald Action Glow */}
+            <RadialGradient
+              id={`glassConsoleEmerald_${uid}`}
+              cx="82%"
+              cy="84%"
+              rx="48%"
+              ry="48%">
+              <Stop offset="0" stopColor="#22C55E" stopOpacity="0.18" />
+              <Stop offset="0.6" stopColor="#10B981" stopOpacity="0.06" />
+              <Stop offset="1" stopColor="#10B981" stopOpacity="0" />
+            </RadialGradient>
+
             {/* Sleek Diagonal Glass Pane Reflection */}
-            <LinearGradient id="glassConsoleSheen" x1="0" y1="0" x2="0.45" y2="1">
+            <LinearGradient
+              id={`glassConsoleSheen_${uid}`}
+              x1="0"
+              y1="0"
+              x2="0.45"
+              y2="1">
               <Stop
                 offset="0"
                 stopColor={tokens.horizonRim}
-                stopOpacity="0.20"
+                stopOpacity="0.22"
               />
-              <Stop offset="0.45" stopColor="#FFFFFF" stopOpacity="0.06" />
+              <Stop offset="0.45" stopColor="#FFFFFF" stopOpacity="0.07" />
               <Stop offset="1" stopColor="#FFFFFF" stopOpacity="0" />
             </LinearGradient>
           </Defs>
@@ -193,20 +229,27 @@ const ConsoleItem = (props: any) => {
             x="0"
             y="0"
             width="400"
-            height="240"
-            fill="url(#glassConsoleBody)"
+            height="220"
+            fill={`url(#glassConsoleBody_${uid})`}
           />
           <Rect
             x="0"
             y="0"
             width="400"
-            height="240"
-            fill="url(#glassConsoleFrost)"
+            height="220"
+            fill={`url(#glassConsoleFrost_${uid})`}
+          />
+          <Rect
+            x="0"
+            y="0"
+            width="400"
+            height="220"
+            fill={`url(#glassConsoleEmerald_${uid})`}
           />
           {/* Diagonal Specular Glass Reflection Pane */}
           <Path
-            d="M 0 0 L 400 0 L 400 92 Q 210 128 0 156 Z"
-            fill="url(#glassConsoleSheen)"
+            d="M 0 0 L 400 0 L 400 84 Q 210 120 0 148 Z"
+            fill={`url(#glassConsoleSheen_${uid})`}
           />
         </Svg>
 
@@ -215,31 +258,62 @@ const ConsoleItem = (props: any) => {
           pointerEvents="none"
           style={[
             styles.topSpecularEdge,
-            {backgroundColor: hexToRgba(tokens.accentLime, 0.85)},
+            {backgroundColor: hexToRgba(tokens.accentLime, 0.9)},
           ]}
         />
 
         {/* Tile Content */}
-        <View style={[styles.tileInner, isHero && styles.tileInnerHero]}>
-          {/* Top Bar: Frosted Status Pill + Power Menu */}
+        <View
+          style={[
+            styles.tileInner,
+            isSingleHero && isWide && styles.tileInnerHero,
+          ]}>
+          {/* Top Bar: Semantic Status Pill + Hardware Tag + Power Menu */}
           <View style={styles.topRow}>
-            <View
-              style={[
-                styles.statusBadge,
-                {borderColor: hexToRgba(tokens.accentLime, 0.52)},
-              ]}>
+            <View style={styles.statusCluster}>
               <View
                 style={[
-                  styles.statusDot,
+                  styles.statusBadge,
                   {
-                    backgroundColor: statusColor,
-                    shadowColor: statusColor,
+                    backgroundColor: statusBgColor,
+                    borderColor: statusBorderColor,
                   },
-                ]}
-              />
-              <Text style={[styles.statusText, {color: '#FFFFFF'}]}>
-                {statusText}
-              </Text>
+                ]}>
+                <View
+                  style={[
+                    styles.statusDot,
+                    {
+                      backgroundColor: statusColor,
+                      shadowColor: statusColor,
+                    },
+                  ]}
+                />
+                <Text style={[styles.statusText, {color: '#FFFFFF'}]}>
+                  {statusText}
+                </Text>
+              </View>
+
+              <View
+                style={[
+                  styles.consoleGenerationPill,
+                  {
+                    borderColor: hexToRgba(tokens.accentLime, 0.38),
+                    backgroundColor: 'rgba(6, 15, 40, 0.48)',
+                  },
+                ]}>
+                <Icon
+                  source="microsoft-xbox"
+                  size={12}
+                  color={tokens.accentLime}
+                />
+                <Text
+                  style={[
+                    styles.consoleGenerationText,
+                    {color: tokens.accentLime},
+                  ]}>
+                  {consoleLabel.toUpperCase()}
+                </Text>
+              </View>
             </View>
 
             <Menu
@@ -248,7 +322,7 @@ const ConsoleItem = (props: any) => {
               anchor={
                 <IconButton
                   icon="dots-horizontal"
-                  size={20}
+                  size={18}
                   iconColor={tokens.accentLime}
                   style={[
                     styles.menuBtn,
@@ -276,66 +350,75 @@ const ConsoleItem = (props: any) => {
             </Menu>
           </View>
 
-          {/* Center / Hero Visual + Details */}
-          <View style={[styles.bodyRow, isHero && styles.bodyRowHero]}>
-            {/* Sleek Frosted Glass Halo Pedestal + Console Render (No pie-wedge disc) */}
+          {/* Main Showcase Row: Illuminated Console Pedestal + Console Details & Vibrant CTA */}
+          <View
+            style={[
+              styles.bodyRow,
+              isSingleHero && styles.bodyRowHorizontal,
+            ]}>
+            {/* Sleek Frosted Glass Halo Pedestal + Console Render */}
             <View
               style={[
                 styles.medallionArea,
-                isHero && styles.medallionAreaHero,
+                isSingleHero && styles.medallionAreaHorizontal,
+                isSingleHero && isWide && styles.medallionAreaHeroWide,
               ]}>
               <Svg
                 pointerEvents="none"
-                width={isHero ? 152 : 132}
-                height={isHero ? 152 : 132}
+                width={isSingleHero && isWide ? 142 : 114}
+                height={isSingleHero && isWide ? 142 : 114}
                 viewBox="0 0 140 140"
                 style={styles.medallionSvg}>
                 <Defs>
                   <RadialGradient
-                    id="glassHaloGlow"
-                    cx="40%"
-                    cy="34%"
-                    rx="62%"
-                    ry="62%">
+                    id={`glassHaloGlow_${uid}`}
+                    cx="45%"
+                    cy="38%"
+                    rx="58%"
+                    ry="58%">
                     <Stop
                       offset="0"
-                      stopColor={tokens.accentLime}
-                      stopOpacity="0.26"
+                      stopColor="#38BDF8"
+                      stopOpacity="0.42"
                     />
                     <Stop
-                      offset="0.58"
+                      offset="0.52"
                       stopColor={tokens.primaryColor}
-                      stopOpacity="0.22"
+                      stopOpacity="0.28"
                     />
                     <Stop
                       offset="1"
                       stopColor={tokens.tileBottomShade}
-                      stopOpacity="0.10"
+                      stopOpacity="0.16"
                     />
                   </RadialGradient>
                 </Defs>
                 <Circle
                   cx="70"
                   cy="70"
-                  r="56"
-                  fill="url(#glassHaloGlow)"
+                  r="58"
+                  fill={`url(#glassHaloGlow_${uid})`}
                   stroke={tokens.accentLime}
-                  strokeWidth="1.3"
-                  strokeOpacity="0.68"
+                  strokeWidth="1.5"
+                  strokeOpacity="0.78"
                 />
               </Svg>
               {renderConsoleArtwork()}
             </View>
 
-            {/* Info & Frosted Glass Play Action */}
-            <View style={[styles.infoArea, isHero && styles.infoAreaHero]}>
+            {/* Info & High-Contrast Emerald/Cyan Play Action */}
+            <View
+              style={[
+                styles.infoArea,
+                isSingleHero && styles.infoAreaHorizontal,
+              ]}>
               <Text
-                variant="labelMedium"
-                style={[styles.consoleTypeTag, {color: tokens.accentLime}]}>
-                {consoleLabel.toUpperCase()}
+                variant="labelSmall"
+                style={[styles.remotePlayEyebrow, {color: tokens.textSecondary}]}>
+                REMOTE PLAY CONSOLE
               </Text>
               <Text
-                variant={isHero ? 'headlineSmall' : 'titleLarge'}
+                variant={isSingleHero && isWide ? 'headlineSmall' : 'titleLarge'}
                 numberOfLines={1}
                 style={styles.consoleTitle}>
                 {consoleItem.deviceName}
@@ -345,22 +428,23 @@ const ConsoleItem = (props: any) => {
                 <View
                   style={[
                     styles.glassPlayPill,
-                    {borderColor: hexToRgba(tokens.accentLime, 0.68)},
                     isFocused && [
                       styles.glassPlayPillFocused,
-                      {borderColor: tokens.accentLime},
+                      {borderColor: '#FFFFFF'},
                     ],
                   ]}>
                   <View style={styles.xboxABadge}>
                     <Text style={styles.xboxABadgeText}>A</Text>
                   </View>
-                  <Text style={styles.glassPlayPillLabel}>
+                  <Text
+                    numberOfLines={1}
+                    style={styles.glassPlayPillLabel}>
                     {primaryButtonLabel}
                   </Text>
                   <Icon
                     source="chevron-right"
                     size={18}
-                    color={tokens.accentLime}
+                    color="#FFFFFF"
                   />
                 </View>
               </View>
@@ -368,38 +452,6 @@ const ConsoleItem = (props: any) => {
           </View>
         </View>
       </TouchableOpacity>
-
-      {/* Subtle Frosted Glass Floor Reflection Under Tile */}
-      <View pointerEvents="none" style={styles.floorReflectionWrap}>
-        <Svg
-          width="100%"
-          height="16"
-          viewBox="0 0 400 16"
-          preserveAspectRatio="none">
-          <Defs>
-            <LinearGradient id="glassTileReflect" x1="0" y1="0" x2="0" y2="1">
-              <Stop
-                offset="0"
-                stopColor={hexToRgba(tileTop, 0.34)}
-                stopOpacity="0.28"
-              />
-              <Stop
-                offset="1"
-                stopColor={hexToRgba(tileTop, 0)}
-                stopOpacity="0"
-              />
-            </LinearGradient>
-          </Defs>
-          <Rect
-            x="6"
-            y="0"
-            width="388"
-            height="16"
-            rx="8"
-            fill="url(#glassTileReflect)"
-          />
-        </Svg>
-      </View>
     </View>
   );
 };
@@ -409,23 +461,23 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   glassTile: {
-    borderRadius: 14,
-    borderWidth: 1,
+    borderRadius: 16,
+    borderWidth: 1.2,
     overflow: 'hidden',
-    elevation: 6,
+    elevation: 8,
     shadowColor: '#020617',
     shadowOffset: {
       width: 0,
       height: 8,
     },
-    shadowOpacity: 0.28,
+    shadowOpacity: 0.36,
     shadowRadius: 16,
   },
   glassTileFocused: {
     borderWidth: 2,
     borderColor: '#FFFFFF',
-    transform: [{scale: 1.02}],
-    elevation: 12,
+    transform: [{scale: 1.015}],
+    elevation: 14,
     shadowOpacity: 0.65,
     shadowRadius: 20,
     zIndex: 99,
@@ -433,35 +485,41 @@ const styles = StyleSheet.create({
   topSpecularEdge: {
     position: 'absolute',
     top: 0,
-    left: 6,
-    right: 6,
-    height: 1.2,
-    backgroundColor: 'rgba(255, 255, 255, 0.82)',
+    left: 10,
+    right: 10,
+    height: 1.5,
+    backgroundColor: 'rgba(255, 255, 255, 0.85)',
     zIndex: 3,
   },
   tileInner: {
-    paddingHorizontal: 18,
+    paddingHorizontal: 16,
     paddingTop: 12,
-    paddingBottom: 16,
+    paddingBottom: 14,
   },
   tileInnerHero: {
-    paddingHorizontal: 24,
+    paddingHorizontal: 22,
     paddingVertical: 16,
   },
   topRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 4,
+    marginBottom: 8,
+  },
+  statusCluster: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 8,
+    flex: 1,
+    marginRight: 8,
   },
   statusBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(6, 15, 40, 0.55)',
-    borderColor: 'rgba(0, 229, 255, 0.52)',
     borderWidth: 1,
     paddingHorizontal: 10,
-    paddingVertical: 3,
+    paddingVertical: 4,
     borderRadius: 999,
   },
   statusDot: {
@@ -469,15 +527,33 @@ const styles = StyleSheet.create({
     height: 8,
     borderRadius: 4,
     marginRight: 6,
+    elevation: 3,
   },
   statusText: {
     fontSize: 10,
     fontWeight: '800',
     letterSpacing: 0.8,
   },
+  consoleGenerationPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    paddingHorizontal: 9,
+    paddingVertical: 3.5,
+    borderRadius: 999,
+    gap: 5,
+  },
+  consoleGenerationText: {
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.7,
+  },
   menuBtn: {
     margin: 0,
-    backgroundColor: 'rgba(6, 15, 40, 0.52)',
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    backgroundColor: 'rgba(6, 15, 40, 0.56)',
     borderColor: 'rgba(0, 229, 255, 0.45)',
     borderWidth: 1,
   },
@@ -485,62 +561,68 @@ const styles = StyleSheet.create({
     flexDirection: 'column',
     alignItems: 'center',
   },
-  bodyRowHero: {
+  bodyRowHorizontal: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
   },
   medallionArea: {
     width: '100%',
-    height: 138,
+    height: 118,
     alignItems: 'center',
     justifyContent: 'center',
     position: 'relative',
   },
-  medallionAreaHero: {
-    width: '40%',
-    height: 156,
+  medallionAreaHorizontal: {
+    width: 116,
+    height: 116,
+  },
+  medallionAreaHeroWide: {
+    width: 146,
+    height: 146,
   },
   medallionSvg: {
     position: 'absolute',
   },
   consoleImage: {
-    width: 118,
-    height: 118,
+    width: 96,
+    height: 96,
   },
   consoleImageWide: {
-    width: 128,
-    height: 128,
+    width: 112,
+    height: 112,
   },
   consoleImageHero: {
-    width: 142,
-    height: 142,
+    width: 126,
+    height: 126,
   },
   infoArea: {
     width: '100%',
-    marginTop: 6,
+    marginTop: 8,
     alignItems: 'flex-start',
   },
-  infoAreaHero: {
-    width: '58%',
+  infoAreaHorizontal: {
+    flex: 1,
     marginTop: 0,
     paddingLeft: 14,
+    justifyContent: 'center',
   },
-  consoleTypeTag: {
-    color: 'rgba(255, 255, 255, 0.88)',
-    fontWeight: '800',
-    letterSpacing: 1.1,
-    fontSize: 11,
+  remotePlayEyebrow: {
+    fontWeight: '700',
+    letterSpacing: 1.0,
+    fontSize: 10,
+    opacity: 0.82,
   },
   consoleTitle: {
     color: '#FFFFFF',
     fontWeight: '800',
     letterSpacing: 0.2,
-    textShadowColor: 'rgba(0, 0, 0, 0.28)',
+    fontSize: 22,
+    textShadowColor: 'rgba(0, 0, 0, 0.35)',
     textShadowOffset: {width: 0, height: 1},
     textShadowRadius: 3,
-    marginTop: 1,
-    marginBottom: 10,
+    marginTop: 2,
+    marginBottom: 12,
   },
   actionRow: {
     width: '100%',
@@ -550,25 +632,30 @@ const styles = StyleSheet.create({
   glassPlayPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(6, 15, 40, 0.58)',
-    borderColor: 'rgba(0, 229, 255, 0.68)',
-    borderWidth: 1,
-    borderRadius: 10,
-    paddingVertical: 8,
-    paddingHorizontal: 13,
+    backgroundColor: '#16A34A',
+    borderColor: '#4ADE80',
+    borderWidth: 1.2,
+    borderRadius: 12,
+    paddingVertical: 9,
+    paddingHorizontal: 14,
+    shadowColor: '#22C55E',
+    shadowOffset: {width: 0, height: 4},
+    shadowOpacity: 0.35,
+    shadowRadius: 8,
+    elevation: 5,
   },
   glassPlayPillFocused: {
-    backgroundColor: 'rgba(255, 255, 255, 0.30)',
+    backgroundColor: '#22C55E',
     borderColor: '#FFFFFF',
-    borderWidth: 1.5,
+    borderWidth: 2,
   },
   xboxABadge: {
     width: 20,
     height: 20,
     borderRadius: 10,
-    backgroundColor: '#22C55E',
+    backgroundColor: 'rgba(5, 46, 22, 0.68)',
     borderWidth: 1,
-    borderColor: '#DCFCE7',
+    borderColor: '#BBF7D0',
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 8,
@@ -581,15 +668,10 @@ const styles = StyleSheet.create({
   glassPlayPillLabel: {
     color: '#FFFFFF',
     fontWeight: '800',
-    fontSize: 13,
+    fontSize: 13.5,
     letterSpacing: 0.3,
     marginRight: 4,
-  },
-  floorReflectionWrap: {
-    width: '100%',
-    height: 16,
-    marginTop: 2,
-    opacity: 0.85,
+    flexShrink: 1,
   },
 });
 

@@ -3,6 +3,7 @@ import {
   Animated,
   Easing,
   Modal,
+  NativeModules,
   StyleProp,
   StyleSheet,
   Text,
@@ -85,7 +86,10 @@ const Loading: React.FC<Props> = ({
     };
   }, [loading, pulseAnim, spinAnim]);
 
-  if (!loading) {
+  if (
+    !loading ||
+    NativeModules.NativeUiBridge?.isNativeUiEnabled?.() === true
+  ) {
     return null;
   }
 

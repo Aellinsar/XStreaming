@@ -71,6 +71,7 @@ public class MainApplication extends Application implements ReactApplication {
             packages.add(new ShortcutManagerPackage());
             packages.add(new GameRecorderPackage());
             packages.add(new ScreenshotPackage());
+            packages.add(new com.xstreaming.nativeui.bridge.NativeUiBridgePackage());
           return packages;
         }
 

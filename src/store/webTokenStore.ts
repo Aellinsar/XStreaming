@@ -1,4 +1,8 @@
-import {storage} from './mmkv';
+import {
+  readPersistentAuthJson,
+  writePersistentAuthJson,
+  clearPersistentAuthJson,
+} from './authVaultStore';
 import {debugFactory} from '../utils/debug';
 const log = debugFactory('webTokenStore');
 
@@ -6,11 +10,11 @@ const STORE_KEY = 'user.webToken';
 
 export const saveWebToken = (token: any) => {
   log.info('saveStreamToken:', token);
-  storage.set(STORE_KEY, JSON.stringify(token));
+  writePersistentAuthJson(STORE_KEY, JSON.stringify(token));
 };
 
 export const getWebToken = (): any => {
-  let token = storage.getString(STORE_KEY);
+  const token = readPersistentAuthJson(STORE_KEY, '');
   if (!token) {
     return null;
   }
@@ -23,7 +27,7 @@ export const getWebToken = (): any => {
 };
 
 export const clearWebToken = () => {
-  storage.set(STORE_KEY, JSON.stringify({}));
+  clearPersistentAuthJson(STORE_KEY);
 };
 
 const calculateSecondsLeft = (date: any) => {

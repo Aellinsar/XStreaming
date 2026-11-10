@@ -1,5 +1,11 @@
 import React from 'react';
-import {StyleSheet, View, Platform, TouchableOpacity} from 'react-native';
+import {
+  StyleSheet,
+  View,
+  Platform,
+  TouchableOpacity,
+  useWindowDimensions,
+} from 'react-native';
 import {Text, Icon, useTheme} from 'react-native-paper';
 import Svg, {
   Defs,
@@ -11,7 +17,7 @@ import Svg, {
 } from 'react-native-svg';
 import {getSettings} from '../store/settingStore';
 import {resolveThemeTokens} from '../theme/presets';
-import {hexToRgba, normalizeHexColor, shiftColor} from '../utils/themeColor';
+import {hexToRgba, normalizeHexColor} from '../utils/themeColor';
 
 type Props = {
   title: string;
@@ -31,6 +37,8 @@ const HomeItem: React.FC<Props> = ({
   isFocused = false,
 }) => {
   const theme = useTheme();
+  const {width} = useWindowDimensions();
+  const isWide = width > 640;
   const settings = getSettings();
   const tokens = resolveThemeTokens(
     theme.dark ? settings.theme : 'light',
@@ -38,13 +46,15 @@ const HomeItem: React.FC<Props> = ({
     settings.theme_primary_color,
   );
 
-  const seed = normalizeHexColor(
-    color || tokens.primaryColor,
-    tokens.primaryColor,
+  const accentColor = normalizeHexColor(
+    color || tokens.accentLime,
+    tokens.accentLime,
   );
-  const tileTop = shiftColor(seed, 0.12);
-  const tileMid = shiftColor(seed, -0.14);
-  const tileBottom = shiftColor(seed, -0.46);
+  const uid = String(icon || title || 'tile').replace(/[^a-zA-Z0-9]/g, '');
+
+  const tileTop = tokens.tileTopHighlight;
+  const tileMid = tokens.tileMidColor;
+  const tileBottom = tokens.tileBottomShade;
 
   const handlePress = () => {
     onPress && onPress();
@@ -60,32 +70,38 @@ const HomeItem: React.FC<Props> = ({
         accessibilityLabel={title}
         style={[
           styles.glassCard,
+          !isWide && styles.glassCardCompactRow,
           {
             backgroundColor: tokens.isLight
-              ? 'rgba(255, 255, 255, 0.34)'
-              : 'rgba(8, 18, 48, 0.44)',
+              ? 'rgba(255, 255, 255, 0.42)'
+              : 'rgba(8, 18, 48, 0.56)',
             borderColor: isFocused
-              ? tokens.accentLime
-              : tokens.glassBorder,
+              ? accentColor
+              : hexToRgba(accentColor, 0.48),
           },
           isFocused && [
             styles.glassCardFocused,
             {
-              borderColor: tokens.accentLime,
-              shadowColor: tokens.accentLime,
+              borderColor: accentColor,
+              shadowColor: accentColor,
             },
           ],
         ]}>
-        {/* Sleek Translucent Royal Glass Layers & Cyan Specular Sheen (Zero concentric rings) */}
+        {/* Sleek Translucent Royal Glass Layers & Distinct Multi-Accent Bloom */}
         <Svg
           pointerEvents="none"
           width="100%"
           height="100%"
-          viewBox="0 0 260 130"
+          viewBox="0 0 260 110"
           preserveAspectRatio="none"
           style={StyleSheet.absoluteFillObject}>
           <Defs>
-            <LinearGradient id="glassSubTileBody" x1="0" y1="0" x2="0.85" y2="1">
+            <LinearGradient
+              id={`glassSubBody_${uid}`}
+              x1="0"
+              y1="0"
+              x2="0.85"
+              y2="1">
               <Stop
                 offset="0"
                 stopColor={tileTop}
@@ -94,38 +110,35 @@ const HomeItem: React.FC<Props> = ({
               <Stop
                 offset="0.52"
                 stopColor={tileMid}
-                stopOpacity={tokens.isDarkCarbonStage ? '0.36' : '0.46'}
+                stopOpacity={tokens.isDarkCarbonStage ? '0.38' : '0.48'}
               />
               <Stop
                 offset="1"
                 stopColor={tileBottom}
-                stopOpacity={tokens.isDarkCarbonStage ? '0.52' : '0.62'}
+                stopOpacity={tokens.isDarkCarbonStage ? '0.56' : '0.66'}
               />
             </LinearGradient>
             <RadialGradient
-              id="glassSubTileFrost"
-              cx="24%"
-              cy="16%"
-              rx="60%"
-              ry="54%">
+              id={`glassSubFrost_${uid}`}
+              cx="18%"
+              cy="35%"
+              rx="55%"
+              ry="68%">
+              <Stop offset="0" stopColor={accentColor} stopOpacity="0.26" />
               <Stop
-                offset="0"
-                stopColor={tokens.horizonRim}
-                stopOpacity="0.24"
-              />
-              <Stop
-                offset="0.6"
+                offset="0.58"
                 stopColor={tokens.primaryColor}
-                stopOpacity="0.08"
+                stopOpacity="0.10"
               />
               <Stop offset="1" stopColor={tokens.primaryColor} stopOpacity="0" />
             </RadialGradient>
-            <LinearGradient id="glassSubTileSheen" x1="0" y1="0" x2="0.45" y2="1">
-              <Stop
-                offset="0"
-                stopColor={tokens.horizonRim}
-                stopOpacity="0.18"
-              />
+            <LinearGradient
+              id={`glassSubSheen_${uid}`}
+              x1="0"
+              y1="0"
+              x2="0.45"
+              y2="1">
+              <Stop offset="0" stopColor={accentColor} stopOpacity="0.18" />
               <Stop offset="0.5" stopColor="#FFFFFF" stopOpacity="0.05" />
               <Stop offset="1" stopColor="#FFFFFF" stopOpacity="0" />
             </LinearGradient>
@@ -134,97 +147,117 @@ const HomeItem: React.FC<Props> = ({
             x="0"
             y="0"
             width="260"
-            height="130"
-            fill="url(#glassSubTileBody)"
+            height="110"
+            fill={`url(#glassSubBody_${uid})`}
           />
           <Rect
             x="0"
             y="0"
             width="260"
-            height="130"
-            fill="url(#glassSubTileFrost)"
+            height="110"
+            fill={`url(#glassSubFrost_${uid})`}
           />
           {/* Diagonal Specular Glass Reflection Pane */}
           <Path
-            d="M 0 0 L 260 0 L 260 48 Q 140 70 0 88 Z"
-            fill="url(#glassSubTileSheen)"
+            d="M 0 0 L 260 0 L 260 44 Q 140 64 0 82 Z"
+            fill={`url(#glassSubSheen_${uid})`}
           />
         </Svg>
 
-        {/* Razor-Thin Electric Cyan Top Specular Glass Edge */}
+        {/* Razor-Thin Multi-Accent Top Specular Glass Edge */}
         <View
           pointerEvents="none"
           style={[
             styles.topSpecularEdge,
-            {backgroundColor: hexToRgba(tokens.accentLime, 0.85)},
+            {backgroundColor: hexToRgba(accentColor, 0.88)},
           ]}
         />
 
-        <View style={styles.cardContent}>
-          {/* Top-Left Frosted Glass Icon Medallion with Cyan Ring */}
-          <View style={styles.iconRow}>
+        {isWide ? (
+          <View style={styles.cardContentWide}>
+            <View style={styles.iconRowWide}>
+              <View
+                style={[
+                  styles.iconBadge,
+                  {
+                    backgroundColor: hexToRgba(accentColor, 0.2),
+                    borderColor: hexToRgba(accentColor, 0.72),
+                  },
+                ]}>
+                <Icon source={icon} color={accentColor} size={25} />
+              </View>
+              <View
+                style={[
+                  styles.chevronBadge,
+                  {
+                    backgroundColor: hexToRgba(accentColor, 0.16),
+                    borderColor: hexToRgba(accentColor, 0.42),
+                  },
+                ]}>
+                <Icon source="chevron-right" color={accentColor} size={18} />
+              </View>
+            </View>
+
+            <View style={styles.textColumnWide}>
+              <Text
+                variant="titleMedium"
+                numberOfLines={1}
+                style={styles.title}>
+                {title}
+              </Text>
+              {subtitle ? (
+                <Text
+                  variant="labelSmall"
+                  numberOfLines={1}
+                  style={[styles.subtitle, {color: tokens.textSecondary}]}>
+                  {subtitle}
+                </Text>
+              ) : null}
+            </View>
+          </View>
+        ) : (
+          <View style={styles.cardContentRow}>
             <View
               style={[
                 styles.iconBadge,
-                {borderColor: hexToRgba(tokens.accentLime, 0.68)},
+                {
+                  backgroundColor: hexToRgba(accentColor, 0.2),
+                  borderColor: hexToRgba(accentColor, 0.72),
+                },
               ]}>
-              <Icon source={icon} color="#FFFFFF" size={28} />
+              <Icon source={icon} color={accentColor} size={24} />
             </View>
-            <Icon
-              source="chevron-right"
-              color={tokens.accentLime}
-              size={20}
-            />
-          </View>
 
-          {/* Bottom-Left Channel Label */}
-          <View style={styles.textColumn}>
-            <Text variant="titleMedium" numberOfLines={1} style={styles.title}>
-              {title}
-            </Text>
-            {subtitle ? (
+            <View style={styles.textColumnRow}>
               <Text
-                variant="labelSmall"
+                variant="titleMedium"
                 numberOfLines={1}
-                style={styles.subtitle}>
-                {subtitle}
+                style={styles.title}>
+                {title}
               </Text>
-            ) : null}
-          </View>
-        </View>
-      </TouchableOpacity>
+              {subtitle ? (
+                <Text
+                  variant="labelSmall"
+                  numberOfLines={1}
+                  style={[styles.subtitle, {color: tokens.textSecondary}]}>
+                  {subtitle}
+                </Text>
+              ) : null}
+            </View>
 
-      {/* Subtle Frosted Glass Floor Reflection Under Tile */}
-      <View pointerEvents="none" style={styles.floorReflectionWrap}>
-        <Svg
-          width="100%"
-          height="12"
-          viewBox="0 0 260 12"
-          preserveAspectRatio="none">
-          <Defs>
-            <LinearGradient id="glassSubReflect" x1="0" y1="0" x2="0" y2="1">
-              <Stop
-                offset="0"
-                stopColor={hexToRgba(tileTop, 0.30)}
-                stopOpacity="0.26"
-              />
-              <Stop
-                offset="1"
-                stopColor={hexToRgba(tileTop, 0)}
-                stopOpacity="0"
-              />
-            </LinearGradient>
-          </Defs>
-          <Rect
-            x="6"
-            y="0"
-            width="248"
-            height="12"
-            rx="6"
-            fill="url(#glassSubReflect)"
-          />
-        </Svg>
-      </View>
+            <View
+              style={[
+                styles.chevronBadge,
+                {
+                  backgroundColor: hexToRgba(accentColor, 0.16),
+                  borderColor: hexToRgba(accentColor, 0.42),
+                },
+              ]}>
+              <Icon source="chevron-right" color={accentColor} size={18} />
+            </View>
+          </View>
+        )}
+      </TouchableOpacity>
     </View>
   );
 };
@@ -234,23 +267,26 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   glassCard: {
-    minHeight: 112,
-    borderRadius: 14,
-    borderWidth: 1,
+    minHeight: 106,
+    borderRadius: 15,
+    borderWidth: 1.2,
     overflow: 'hidden',
-    elevation: 5,
+    elevation: 6,
     shadowColor: '#020617',
     shadowOffset: {
       width: 0,
       height: 6,
     },
-    shadowOpacity: 0.24,
+    shadowOpacity: 0.28,
     shadowRadius: 14,
+  },
+  glassCardCompactRow: {
+    minHeight: 74,
   },
   glassCardFocused: {
     borderWidth: 2,
     borderColor: '#FFFFFF',
-    transform: [{scale: Platform.isTV ? 1.04 : 1.02}],
+    transform: [{scale: Platform.isTV ? 1.03 : 1.015}],
     elevation: 10,
     shadowOpacity: 0.65,
     shadowRadius: 18,
@@ -259,56 +295,72 @@ const styles = StyleSheet.create({
   topSpecularEdge: {
     position: 'absolute',
     top: 0,
-    left: 6,
-    right: 6,
-    height: 1.2,
-    backgroundColor: 'rgba(255, 255, 255, 0.80)',
+    left: 10,
+    right: 10,
+    height: 1.5,
+    backgroundColor: 'rgba(255, 255, 255, 0.85)',
     zIndex: 3,
   },
-  cardContent: {
-    minHeight: 112,
+  cardContentWide: {
+    minHeight: 106,
     flexDirection: 'column',
     justifyContent: 'space-between',
     paddingVertical: 12,
     paddingHorizontal: 14,
   },
-  iconRow: {
+  cardContentRow: {
+    minHeight: 74,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+  },
+  iconRowWide: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
   },
   iconBadge: {
-    width: 46,
-    height: 46,
-    borderRadius: 23,
-    backgroundColor: 'rgba(6, 15, 40, 0.56)',
-    borderWidth: 1,
-    borderColor: 'rgba(0, 229, 255, 0.68)',
+    width: 44,
+    height: 44,
+    borderRadius: 13,
+    backgroundColor: 'rgba(6, 15, 40, 0.62)',
+    borderWidth: 1.2,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  textColumn: {
+  chevronBadge: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  textColumnWide: {
     marginTop: 10,
+  },
+  textColumnRow: {
+    flex: 1,
+    marginHorizontal: 13,
+    justifyContent: 'center',
   },
   title: {
     color: '#FFFFFF',
     fontWeight: '800',
+    fontSize: 16,
     letterSpacing: 0.2,
-    textShadowColor: 'rgba(0, 0, 0, 0.28)',
+    textShadowColor: 'rgba(0, 0, 0, 0.32)',
     textShadowOffset: {width: 0, height: 1},
     textShadowRadius: 3,
   },
   subtitle: {
-    color: 'rgba(255, 255, 255, 0.88)',
-    marginTop: 1,
+    color: 'rgba(224, 242, 254, 0.88)',
+    marginTop: 2,
+    fontSize: 12,
     letterSpacing: 0.2,
     fontWeight: '600',
-  },
-  floorReflectionWrap: {
-    width: '100%',
-    height: 12,
-    marginTop: 2,
-    opacity: 0.85,
   },
 });
 

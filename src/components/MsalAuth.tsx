@@ -49,9 +49,16 @@ const MsalAuth: React.FC<Props> = ({data, onCancel}) => {
       ToastAndroid.show(t('Copied'), ToastAndroid.SHORT);
     }
     const targetUrl =
-      data?.verification_uri || 'https://login.live.com/oauth20_remoteconnect.srf';
+      data?.verification_uri_complete ||
+      data?.verification_uri ||
+      'https://login.live.com/oauth20_remoteconnect.srf';
     Linking.openURL(targetUrl);
-  }, [data?.user_code, data?.verification_uri, t]);
+  }, [
+    data?.user_code,
+    data?.verification_uri_complete,
+    data?.verification_uri,
+    t,
+  ]);
 
   const copyCodeOnly = React.useCallback(() => {
     if (data?.user_code) {
@@ -120,8 +127,9 @@ const MsalAuth: React.FC<Props> = ({data, onCancel}) => {
           Microsoft / Xbox Sign-In
         </Text>
         <Text variant="bodyMedium" style={styles.subtitle}>
-          Code copied to clipboard. Open the link below and paste your code—this
-          screen will continue automatically as soon as you finish signing in.
+          Code copied to clipboard. Open the link below and paste your code -
+          this screen will continue automatically as soon as you finish signing
+          in.
         </Text>
 
         {countdown > 0 && (
@@ -191,7 +199,11 @@ const MsalAuth: React.FC<Props> = ({data, onCancel}) => {
 
         <View style={styles.qrSection}>
           <View style={styles.qrWrapper}>
-            <QRCode value={data.verification_uri} size={120} color="#000000" />
+            <QRCode
+              value={data.verification_uri_complete || data.verification_uri}
+              size={120}
+              color="#000000"
+            />
           </View>
         </View>
 

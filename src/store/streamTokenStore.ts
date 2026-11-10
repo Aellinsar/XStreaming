@@ -1,4 +1,8 @@
-import {storage} from './mmkv';
+import {
+  readPersistentAuthJson,
+  writePersistentAuthJson,
+  clearPersistentAuthJson,
+} from './authVaultStore';
 import {debugFactory} from '../utils/debug';
 const log = debugFactory('streamTokenStore');
 
@@ -7,14 +11,14 @@ const STORE_KEY = 'user.streamToken';
 export const saveStreamToken = (token: any) => {
   log.info('saveStreamToken:', token);
   try {
-    storage.set(STORE_KEY, JSON.stringify(token));
-  } catch (e) {
-    storage.set(STORE_KEY, JSON.stringify({}));
+    writePersistentAuthJson(STORE_KEY, JSON.stringify(token));
+  } catch {
+    clearPersistentAuthJson(STORE_KEY);
   }
 };
 
 export const getStreamToken = (): any => {
-  let token = storage.getString(STORE_KEY);
+  const token = readPersistentAuthJson(STORE_KEY, '');
   if (!token) {
     return null;
   }
@@ -27,7 +31,7 @@ export const getStreamToken = (): any => {
 };
 
 export const clearStreamToken = () => {
-  storage.set(STORE_KEY, JSON.stringify({}));
+  clearPersistentAuthJson(STORE_KEY);
 };
 
 export const isStreamTokenValid = (token: any) => {

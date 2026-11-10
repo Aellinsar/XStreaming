@@ -375,6 +375,10 @@ public class MainActivity extends ReactActivity implements UsbDriverService.UsbD
     lastEmitMenuNavAction = action;
     lastEmitMenuNavTime = now;
 
+    if (com.xstreaming.nativeui.core.UiEngineBootConfig.isNativeUiEnabled(this)) {
+      com.xstreaming.nativeui.bridge.NativeUiInputBus.dispatchAction(action);
+    }
+
     WritableMap params = Arguments.createMap();
     params.putString("action", action);
     sendEvent("onMenuNavigation", params);
@@ -476,6 +480,15 @@ public class MainActivity extends ReactActivity implements UsbDriverService.UsbD
           break;
         case KeyEvent.KEYCODE_BUTTON_Y:
           navAction = "y";
+          break;
+        case KeyEvent.KEYCODE_BUTTON_L1:
+          navAction = "lb";
+          break;
+        case KeyEvent.KEYCODE_BUTTON_R1:
+          navAction = "rb";
+          break;
+        case KeyEvent.KEYCODE_BUTTON_MODE:
+          navAction = "nexus";
           break;
       }
 
@@ -949,12 +962,17 @@ public class MainActivity extends ReactActivity implements UsbDriverService.UsbD
     controllerHandler = new ControllerHandler(this);
 
     inputManager = (InputManager) getSystemService(Context.INPUT_SERVICE);
+    if (inputManager != null) {
+      inputManager.registerInputDeviceListener(gamepadDeviceListener, null);
+    }
+    syncPhysicalGamepadConnected();
 
     // Start the USB driver
     bindService(new Intent(this, UsbDriverService.class),
             usbDriverServiceConnection, Service.BIND_AUTO_CREATE);
 
-    getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+    // Keep screen awake ONLY during active game streaming (cleared on dashboard/settings)
+    updateKeepScreenOn(false);
 
     try {
       IntentFilter navFilter = new IntentFilter("com.xstreaming.ACTION_MENU_NAV");
@@ -966,11 +984,82 @@ public class MainActivity extends ReactActivity implements UsbDriverService.UsbD
     } catch (Exception e) {
       Log.w("MainActivity", "Failed to register menuNavReceiver", e);
     }
+
+    Intent startIntent = getIntent();
+    if (startIntent != null && startIntent.hasExtra("native_android_ui")) {
+      boolean enableNativeUi = startIntent.getBooleanExtra("native_android_ui", true);
+      startIntent.removeExtra("native_android_ui");
+      com.xstreaming.nativeui.core.UiEngineBootConfig.setNativeUiEnabled(this, enableNativeUi);
+    }
+
+    com.xstreaming.nativeui.NativeUiHost.attachIfEnabled(this);
+  }
+
+  public static void updateKeepScreenOn(final boolean keepOn) {
+    final MainActivity activity = instance;
+    if (activity == null) {
+      return;
+    }
+    activity.runOnUiThread(new Runnable() {
+      @Override
+      public void run() {
+        try {
+          if (keepOn) {
+            activity.getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+          } else {
+            activity.getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+          }
+        } catch (Exception ignored) {
+        }
+      }
+    });
+  }
+
+  private final InputManager.InputDeviceListener gamepadDeviceListener =
+      new InputManager.InputDeviceListener() {
+        @Override
+        public void onInputDeviceAdded(int deviceId) {
+          syncPhysicalGamepadConnected();
+        }
+
+        @Override
+        public void onInputDeviceRemoved(int deviceId) {
+          syncPhysicalGamepadConnected();
+        }
+
+        @Override
+        public void onInputDeviceChanged(int deviceId) {
+          syncPhysicalGamepadConnected();
+        }
+      };
+
+  private void syncPhysicalGamepadConnected() {
+    try {
+      boolean hasGamepad = false;
+      int[] deviceIds = InputDevice.getDeviceIds();
+      for (int id : deviceIds) {
+        InputDevice dev = InputDevice.getDevice(id);
+        if (dev == null || dev.isVirtual()) continue;
+        int sources = dev.getSources();
+        boolean isGamepad =
+            (sources & InputDevice.SOURCE_GAMEPAD) == InputDevice.SOURCE_GAMEPAD
+                || (sources & InputDevice.SOURCE_JOYSTICK) == InputDevice.SOURCE_JOYSTICK;
+        if (isGamepad) {
+          hasGamepad = true;
+          break;
+        }
+      }
+      com.xstreaming.nativeui.bridge.XStreamingStateStore.setGamepadConnected(hasGamepad);
+    } catch (Exception ignored) {
+    }
   }
 
   @Override
   protected void onDestroy() {
     try {
+      if (inputManager != null) {
+        inputManager.unregisterInputDeviceListener(gamepadDeviceListener);
+      }
       if (com.xstreaming.recording.GameRecorder.getInstance().isRecording()) {
         com.xstreaming.recording.GameRecorder.getInstance().stopRecording(null);
       }
@@ -983,6 +1072,21 @@ public class MainActivity extends ReactActivity implements UsbDriverService.UsbD
   public void onNewIntent(Intent intent) {
     super.onNewIntent(intent);
     setIntent(intent);
+
+    if (intent != null && intent.hasExtra("native_android_ui")) {
+      boolean enableNativeUi = intent.getBooleanExtra("native_android_ui", false);
+      intent.removeExtra("native_android_ui");
+      com.xstreaming.nativeui.core.UiEngineBootConfig.setNativeUiEnabled(this, enableNativeUi);
+    }
+
+    if (intent != null && intent.getData() != null) {
+      String dataUri = intent.getData().toString();
+      if (dataUri.startsWith("ms-xal-000000004c20a908://auth")) {
+        WritableMap oauthParams = Arguments.createMap();
+        oauthParams.putString("url", dataUri);
+        sendEvent("onOAuthRedirectUrl", oauthParams);
+      }
+    }
 
     if (intent != null && intent.hasExtra("menuNav")) {
       String action = intent.getStringExtra("menuNav");
@@ -1029,6 +1133,7 @@ public class MainActivity extends ReactActivity implements UsbDriverService.UsbD
         }
       }
     } catch (Exception ignored) {}
+    com.xstreaming.nativeui.bridge.XStreamingStateStore.setGamepadConnected(hasGamepad);
     WritableMap params = Arguments.createMap();
     params.putBoolean("hasGamepad", hasGamepad);
     sendEvent("onGamepadConnectionChange", params);

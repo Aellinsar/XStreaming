@@ -150,6 +150,10 @@ function SettingsScreen({navigation}) {
 
   const settingActions = React.useMemo(() => {
     const list: (() => void)[] = [];
+    // Native Android UI switcher
+    list.push(() => {
+      NativeModules.NativeUiBridge?.setNativeUiEnabledAndRestart?.(true);
+    });
     // bases
     bases.forEach(meta => {
       list.push(() => handleItemPress(meta.name));
@@ -349,6 +353,15 @@ function SettingsScreen({navigation}) {
               ⚙️ {t('BasesSettings')}
             </Text>
           </View>
+
+          {renderItem(
+            'Android Native UI (2009 Xbox Glass)',
+            'Must restart app to switch between React Native UI and Android Native UI',
+            () => {
+              NativeModules.NativeUiBridge?.setNativeUiEnabledAndRestart?.(true);
+            },
+            'native_android_ui_switch',
+          )}
 
           {bases.map((meta, idx) =>
             renderItem(

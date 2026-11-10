@@ -36,6 +36,7 @@ import android.os.Vibrator;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
+@SuppressWarnings("deprecation")
 public class GamepadManager extends ReactContextBaseJavaModule {
 
     private static final int STOP_PULSE_DURATION_MS = 20;
@@ -333,7 +334,10 @@ public class GamepadManager extends ReactContextBaseJavaModule {
 
     @ReactMethod
     public void setCurrentScreen(String value) {
-        currentScreen = value;
+        currentScreen = value != null ? value : "";
+        if (!currentScreen.isEmpty()) {
+            com.xstreaming.nativeui.bridge.XStreamingStateStore.setCurrentRouteScreen(currentScreen);
+        }
     }
 
     public static String getCurrentScreen() {

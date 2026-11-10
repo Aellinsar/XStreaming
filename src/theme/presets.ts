@@ -110,21 +110,22 @@ const buildGlassTokensFromPrimary = (
   const tileBottomLip = shiftColor(seed, -0.56);
 
   // Deep Royal Sapphire & Midnight Indigo Atmospheric Backdrop Wall
+  // Kept dark & rich so translucent Royal Sapphire cards pop with crisp contrast
   const stageSkyTop = isLight
     ? shiftColor(seed, 0.86)
     : isDarkCarbonStage
-    ? '#040917'
-    : shiftColor(seed, -0.72);
+    ? '#030712'
+    : shiftColor(seed, -0.82);
   const stageSkyMid = isLight
     ? shiftColor(seed, 0.72)
     : isDarkCarbonStage
-    ? '#09142E'
-    : shiftColor(seed, -0.38);
+    ? '#071026'
+    : shiftColor(seed, -0.62);
   const stageHorizon = isLight
     ? shiftColor(seed, 0.56)
     : isDarkCarbonStage
-    ? shiftColor(seed, -0.18)
-    : seed;
+    ? '#0B193B'
+    : shiftColor(seed, -0.42);
 
   // Deep Royal Smoked-Glass Reflective Stage Floor
   const stageFloorTop =
@@ -132,22 +133,22 @@ const buildGlassTokensFromPrimary = (
     (isLight
       ? '#CBD5E1'
       : isDarkCarbonStage
-      ? '#091530'
-      : shiftColor(seed, -0.56));
+      ? '#071128'
+      : shiftColor(seed, -0.58));
   const stageFloorMid =
     options?.floorMid ||
     (isLight
       ? '#E2E8F0'
       : isDarkCarbonStage
-      ? '#0F224A'
-      : shiftColor(seed, -0.38));
+      ? '#0A1938'
+      : shiftColor(seed, -0.48));
   const stageFloorBottom =
     options?.floorBottom ||
     (isLight
       ? '#94A3B8'
       : isDarkCarbonStage
-      ? '#040A18'
-      : shiftColor(seed, -0.82));
+      ? '#030712'
+      : shiftColor(seed, -0.86));
 
   return {
     id,
@@ -175,10 +176,10 @@ const buildGlassTokensFromPrimary = (
     tileRingWatermark: hexToRgba(accentHighlight, 0.14),
     glassBg: isLight
       ? 'rgba(255, 255, 255, 0.78)'
-      : hexToRgba(shiftColor(seed, -0.48), 0.68),
+      : hexToRgba(shiftColor(seed, -0.48), 0.72),
     glassBgElevated: isLight
       ? 'rgba(255, 255, 255, 0.90)'
-      : hexToRgba(shiftColor(seed, -0.36), 0.82),
+      : hexToRgba(shiftColor(seed, -0.36), 0.86),
     glassBorder: hexToRgba(accentHighlight, 0.56),
     glassBorderHighlight: accentHighlight,
     glassSheen: isLight
@@ -189,9 +190,9 @@ const buildGlassTokensFromPrimary = (
       ? 'rgba(15, 23, 42, 0.76)'
       : 'rgba(224, 242, 254, 0.90)',
     tileColors: {
-      cloud: shiftColor(seed, 0.08),
-      achievements: seed,
-      settings: shiftColor(seed, -0.12),
+      cloud: isLight ? '#0284C7' : '#00E5FF',
+      achievements: isLight ? '#D97706' : '#F59E0B',
+      settings: isLight ? '#7C3AED' : '#A78BFA',
     },
   };
 };

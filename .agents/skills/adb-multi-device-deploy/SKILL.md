@@ -11,11 +11,15 @@ Google Advanced Protection ("Account Protection") blocks on-device APK sideloadi
 
 ```powershell
 $adb = "$env:LOCALAPPDATA\Android\Sdk\platform-tools\adb.exe"
+& $adb start-server
+Start-Sleep -Seconds 2
 & $adb devices -l
 & $adb mdns services
 ```
 
-Always pass `-s <serial_or_ip:port>` when installing to multiple devices.
+Always pass `-s <serial_or_ip:port>` when installing to multiple devices, and always include `Start-Sleep -Seconds 2` after `& $adb start-server` so the daemon finishes mDNS discovery (`_adb-tls-connect._tcp`) before running `adb connect` or `adb install`.
+
+> **Critical Screenshot Rule (No PowerShell `>` on Binary Output)**: Never use `adb exec-out screencap -p > file.png` in PowerShell, as PowerShell's `>` redirection re-encodes binary stdout as `UTF-16LE` and corrupts the PNG. Always run `adb shell screencap -p /sdcard/screen.png` followed by `adb pull /sdcard/screen.png <local_path>`.
 
 ---
 

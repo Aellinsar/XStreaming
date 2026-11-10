@@ -13,12 +13,16 @@ import {
   AppState,
   StatusBar,
   useWindowDimensions,
+  DeviceEventEmitter,
 } from 'react-native';
 import {IconButton} from 'react-native-paper';
 import {RTCView, MediaStream, RTCRtpReceiver} from 'react-native-webrtc';
 import Orientation from 'react-native-orientation-locker';
 import Spinner from '../components/Spinner';
-import {formatFriendlyStreamError} from '../utils/connectionStatus';
+import {
+  formatConnectionStatus,
+  formatFriendlyStreamError,
+} from '../utils/connectionStatus';
 import {
   canScheduleStreamReconnect,
   resolveStreamConnectionTransition,
@@ -97,6 +101,7 @@ const {
   PipManager,
   NativeInputDialog,
   FrameGenStatsModule,
+  NativeUiBridge,
 } = NativeModules;
 
 let defaultMaping: any = GAMEPAD_MAPING;
@@ -252,6 +257,7 @@ export function NativeStreamScreenBase({
 
   const [loading, setLoading] = React.useState(false);
   const [loadingText, setLoadingText] = React.useState('');
+  const [isStreamConnected, setIsStreamConnected] = React.useState(false);
   const [streamApi, setStreamApi] = React.useState<any>(null);
   const [settings, setSettings] = React.useState<any>({});
   const [isExiting, setIsExiting] = React.useState(false);
@@ -888,6 +894,7 @@ export function NativeStreamScreenBase({
     }
 
     reconnectAttemptsRef.current += 1;
+    setIsStreamConnected(false);
     setLoading(true);
     setLoadingText(
       `${t('Connecting...')} (${
@@ -912,6 +919,7 @@ export function NativeStreamScreenBase({
 
   React.useEffect(() => {
     GamepadManager.setCurrentScreen('stream');
+    NativeUiBridge?.setRouteScreen?.('stream');
     suspendGamepadNavigation();
     const isUsbMode = route.params?.isUsbMode || false;
     const usbController = route.params?.usbController || 'Xbox360Controller';
@@ -1724,6 +1732,7 @@ export function NativeStreamScreenBase({
           }
           setLoadingText(`${t(CONNECTED)}`);
           setLoading(false);
+          setIsStreamConnected(true);
           isConnected.current = true;
           ensureSessionStartTime();
           if (route.params?.streamType === 'cloud') {
@@ -2321,8 +2330,13 @@ export function NativeStreamScreenBase({
                 onPress: () => {
                   markOrientationForRestore();
                   restorePreviousOrientation();
+                  NativeUiBridge?.setRouteScreen?.('home');
+                  const isNativeUi =
+                    NativeUiBridge?.isNativeUiEnabled?.() === true;
                   const dest =
-                    route.params?.streamType === 'cloud' ? 'Cloud' : 'Home';
+                    !isNativeUi && route.params?.streamType === 'cloud'
+                      ? 'Cloud'
+                      : 'Home';
                   navigation.navigate(dest);
                 },
               },
@@ -2498,7 +2512,7 @@ export function NativeStreamScreenBase({
       connectState !== CONNECTED ||
       !webrtcClient ||
       typeof webrtcClient.getStreamState !== 'function' ||
-      (!showPerformance && !isReportEnabled)
+      (!showPerformance && !isReportEnabled && !NativeUiBridge)
     ) {
       if (performanceInterval.current) {
         clearInterval(performanceInterval.current);
@@ -2622,6 +2636,28 @@ export function NativeStreamScreenBase({
           }
           if (showPerformance) {
             setPerformance(await mergeFrameGenStats(res));
+          }
+          if (res && NativeUiBridge) {
+            try {
+              const rawBr =
+                typeof res.br === 'string'
+                  ? parseFloat(res.br)
+                  : Number(res.br || 0);
+              const bitrateMbps = rawBr > 200 ? rawBr / 1000 : rawBr;
+              NativeUiBridge.syncStreamTelemetry({
+                isStreaming: true,
+                streamType: route.params?.streamType === 'cloud' ? 'cloud' : 'home',
+                targetName: String(route.params?.sessionId || 'Xbox Console'),
+                connectionPhase: '',
+                resolutionText: String(res.resolution || '1080p HQ'),
+                fps: Math.round(Number(res.fps || 60)),
+                bitrateMbps: Number.isFinite(bitrateMbps) ? bitrateMbps : 0,
+                rttMs: Math.round(Number(res.rtt || 0)),
+                jitterMs: Number(res.jit || 0),
+                decodeMs: Number(res.decode || 0),
+                packetLossPct: Number(res.pl || 0),
+              });
+            } catch (_e) {}
           }
           if (res && isReportEnabled) {
             sessionStatsTracker.recordSample({
@@ -3056,6 +3092,107 @@ export function NativeStreamScreenBase({
 
     handleCloseModal();
   }, [handleCloseModal, t, webrtcClient]);
+
+  React.useEffect(() => {
+    if (!NativeUiBridge?.syncStreamTelemetry) {
+      return;
+    }
+    try {
+      const streamKind =
+        route.params?.streamType === 'cloud' ? 'cloud' : 'home';
+      const formattedStatus = formatConnectionStatus(
+        loadingText || t('Connecting...'),
+      );
+      const formattedPhase = !isStreamConnected
+        ? `${formattedStatus.headline}|${formattedStatus.subtitle}|${
+            formattedStatus.step || 1
+          }`
+        : '';
+      NativeUiBridge.syncStreamTelemetry({
+        isStreaming: true,
+        streamType: streamKind,
+        targetName: String(route.params?.sessionId || 'Xbox Console'),
+        connectionPhase: formattedPhase,
+        resolutionText: settings.resolution >= 1080 ? '1080p HQ' : '720p',
+        fps: 60,
+        bitrateMbps: 0,
+        rttMs: 0,
+        jitterMs: 0,
+        decodeMs: 0,
+        packetLossPct: 0,
+      });
+    } catch (_e) {}
+  }, [
+    isStreamConnected,
+    loading,
+    loadingText,
+    route.params?.sessionId,
+    route.params?.streamType,
+    settings.resolution,
+    t,
+  ]);
+
+  React.useEffect(() => {
+    return () => {
+      NativeUiBridge?.setRouteScreen?.('home');
+    };
+  }, []);
+
+  React.useEffect(() => {
+    if (!NativeUiBridge) {
+      return;
+    }
+    const sub = DeviceEventEmitter.addListener(
+      'onNativeUiCommand',
+      (event: {command?: string; payload?: string}) => {
+        if (!event?.command) {
+          return;
+        }
+        switch (event.command) {
+          case 'sendXboxGuideButton':
+            gpState.Nexus = 1;
+            setTimeout(() => {
+              gpState.Nexus = 0;
+            }, 120);
+            break;
+          case 'virtualGamepadInput': {
+            try {
+              const parsed = event.payload ? JSON.parse(event.payload) : {};
+              if (parsed.type === 'reset') {
+                resetGamepadState(gpState, gpState.GamepadIndex ?? 0);
+              } else if (parsed.type === 'button' && parsed.button) {
+                const key = String(parsed.button);
+                if (Object.prototype.hasOwnProperty.call(gpState, key)) {
+                  (gpState as any)[key] = parsed.pressed ? 1 : 0;
+                }
+              } else if (parsed.type === 'stick') {
+                const x = Math.max(-1, Math.min(1, Number(parsed.x) || 0));
+                const y = Math.max(-1, Math.min(1, Number(parsed.y) || 0));
+                if (parsed.stick === 'left') {
+                  gpState.LeftThumbXAxis = x;
+                  gpState.LeftThumbYAxis = y;
+                } else if (parsed.stick === 'right') {
+                  gpState.RightThumbXAxis = x;
+                  gpState.RightThumbYAxis = y;
+                }
+              }
+            } catch (_e) {}
+            break;
+          }
+          case 'toggleStreamMic':
+            handleToggleMic();
+            break;
+          case 'reconnectStream':
+            scheduleReconnect();
+            break;
+          case 'exitStream':
+            requestExit(false);
+            break;
+        }
+      },
+    );
+    return () => sub.remove();
+  }, [handleToggleMic, requestExit, scheduleReconnect]);
 
   const getActiveProfileName = React.useCallback(() => {
     return settings.custom_virtual_gamepad || LIVE_GAMEPAD_PROFILE;

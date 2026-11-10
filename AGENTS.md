@@ -1,134 +1,122 @@
-# XStreaming — Engineering, Upstream Sync & Agent Guide (`AGENTS.md`)
+# XStreaming - Engineering, Upstream Sync & Agent Guide (`AGENTS.md`)
 
 This repository ([`Aellinsar/XStreaming`](https://github.com/Aellinsar/XStreaming)) is an engineering-focused fork of [`Geocld/XStreaming`](https://github.com/Geocld/XStreaming) licensed under **GNU AGPLv3** ([`LICENSE`](./LICENSE)).
 
-Our core engineering goals are:
-1. **Clean Upstream Interoperability:** Keep changes modular, minimal-diff, and well-isolated so we can both **pull/rebase upstream changes from `Geocld/XStreaming` (`upstream/main`) effortlessly** and **extract standalone, single-topic Pull Requests back to `upstream/main`**.
-2. **Engineering Rigor & Testability:** Every bugfix or behavioral change must be backed by automated unit tests in [`__tests__/`](./__tests__), follow React Native / TypeScript best practices, and keep `corepack yarn test --watchAll=false` 100% green.
-3. **Sleek, Reliable User Experience:** Eliminate clunky UI patterns (such as embedded WebView password entry, dead/placebo buttons, and stale React closure hangs) in favor of clean, responsive native flows.
-4. **Strict License & Privacy Compliance:** Maintain full compliance with **AGPL-3.0** and keep the repository 100% free of personal network data, device identifiers, or secrets.
+## Skills Quick Reference & Knowledge Domain Directory
+
+| Knowledge Domain | Specialized Skills | Focus Area |
+|---|---|---|
+| **Architecture, Design & Tests** | [engineering-design-and-test-standards](.agents/skills/engineering-design-and-test-standards/SKILL.md) | Unidirectional `StateFlow` architecture, 3rd-party dependency license vetting, `56dp` toolbars, 6 Modal Invariants, Fuchsia Developer Mode, feature flags, dual Jest/JUnit testing, git/commit standards. |
+| **Native Android Compose UI** | [native-compose-nxe-ui](.agents/skills/native-compose-nxe-ui/SKILL.md) | `minSdkVersion = 33` (Android 13 - Pixel Tablet baseline), JDK 17 LTS, Kotlin `1.9.24`, Jetpack Compose, Material 3, API 33 AGSL `RuntimeShader` 2009 Xbox Glass refraction, LRA tactile haptics, `UiEngineBootConfig`. |
+| **Build, Test & Packaging** | [xstreaming-build](.agents/skills/xstreaming-build/SKILL.md) | Jest (`corepack yarn test --watchAll=false`) and JUnit (`testProdReleaseUnitTest`) execution, `patch-package`, Windows CMake/Prefab guardrails, `assembleProdRelease`. |
+| **Multi-Device ADB Deploy** | [adb-multi-device-deploy](.agents/skills/adb-multi-device-deploy/SKILL.md) | ADB Wireless Debugging pairing, Play Protect prompt suppression, multi-device deployment (Pixel 9 Pro `caiman`, Pixel Tablet `tangorpro`), VPN split tunneling. |
+| **Upstream Sync & PRs** | [upstream-sync-and-pr](.agents/skills/upstream-sync-and-pr/SKILL.md) | Syncing upstream commits from `Geocld/XStreaming` (`upstream/main`) and extracting isolated `upstream-pr/<topic>` branches under AGPL-3.0. |
+| **Esedre Roadmap & Tickets** | [esedre](.agents/skills/esedre/SKILL.md) | Esedre MCP/CLI developer ticketing, milestone management, and roadmap tracking (`Xbox` project). |
 
 ---
 
-## 1. License Compliance (GNU AGPL-3.0 + Section 7 Terms & MPL-2.0)
+## 1. License Compliance & Vetted 3rd-Party Dependencies (GNU AGPL-3.0 + MPL-2.0)
 
-Upstream `Geocld/XStreaming` is licensed under the **GNU Affero General Public License v3.0 (AGPL-3.0)** ([`LICENSE`](./LICENSE)), which is already the **most restrictive OSI-approved copyleft license** (stronger than MPL-2.0 alone, as AGPL-3.0 enforces whole-program copyleft, forbids proprietary linking, and closes the network/SaaS loophole).
+Upstream `Geocld/XStreaming` is licensed under the **GNU Affero General Public License v3.0 (AGPL-3.0)** ([`LICENSE`](./LICENSE)).
 
-To maximize protection while remaining 100% compliant with upstream and ready for upstream PR contributions:
-
-1. **Combined Work under AGPL-3.0 + Section 7 Additional Terms:**
-   - Under AGPL-3.0 § 5(c), the combined repository and all modifications to existing upstream files remain licensed under **AGPL-3.0** ([`LICENSE`](./LICENSE)).
+1. **Combined Work under AGPL-3.0 + Section 7 Additional Terms**:
+   - Under AGPL-3.0 Section 5(c), the combined repository and all modifications to existing upstream files remain licensed under **AGPL-3.0** ([`LICENSE`](./LICENSE)).
    - We additionally apply **AGPL-3.0 Section 7(b), 7(c), and 7(e) supplemental restrictions** in [`NOTICE.md`](./NOTICE.md) (mandatory preservation of attribution notices, prohibition of origin misrepresentation / mandatory marking of downstream derivatives, and no trademark grant).
-2. **Standalone Original Files under MPL-2.0 (Secondary License: AGPL-3.0):**
-   - Newly authored standalone files, unit tests, and skills in this fork are licensed under the **Mozilla Public License 2.0 (MPL-2.0)** with **GNU AGPL-3.0** compatibility per MPL-2.0 § 3.3:
-     ```ts
+2. **Standalone Original Files under MPL-2.0 (Secondary License: AGPL-3.0)**:
+   - Newly authored standalone files, unit tests, and skills in this fork (`android/app/src/main/java/com/xstreaming/nativeui/`, `android/app/src/test/java/com/xstreaming/nativeui/`, and standalone TypeScript helpers) are licensed under the **Mozilla Public License 2.0 (MPL-2.0)** with **GNU AGPL-3.0** compatibility per MPL-2.0 Section 3.3:
+     ```kotlin
      // SPDX-License-Identifier: MPL-2.0 OR AGPL-3.0-or-later
      ```
-   - This gives our standalone code Mozilla's file-level copyleft when extracted independently, while allowing seamless combination and upstream PR submission into AGPL-3.0 `Geocld/XStreaming`.
-3. **Preserve Upstream Attribution & Document Modifications (`NOTICE.md` — AGPL-3.0 § 5a):**
+3. **Strict 3rd-Party Dependency Vetting**:
+   - Prefer official first-party Google AndroidX / Jetpack (`androidx.compose.*`, `androidx.activity.*`, `androidx.lifecycle.*`, `androidx.navigation.*` - all `Apache-2.0`) and official JetBrains Kotlin (`org.jetbrains.kotlin.*`, `org.jetbrains.kotlinx.*` - `Apache-2.0`) libraries.
+   - Never add proprietary/closed-source SDKs, `GPL-2.0-only` dependencies, or unmaintained 3rd-party blur/haptic/UI wrappers when Android API 33 (`RuntimeShader`, `RenderEffect`, `VibrationEffect.Composition`) provides native hardware-accelerated APIs.
+4. **Preserve Upstream Attribution & Document Modifications (`NOTICE.md` - AGPL-3.0 Section 5a)**:
    - Never remove or alter [`LICENSE`](./LICENSE) or upstream copyright/author attributions (`Geocld` and contributors) in [`README.md`](./README.md) or [`src/pages/About.tsx`](./src/pages/About.tsx).
-   - Whenever adding or modifying features/fixes, update [`NOTICE.md`](./NOTICE.md) with a dated entry under either **Tier 1 (Upstreamable Bugfixes & UX Improvements)** or **Tier 2 (Fork-Specific Build & Ergonomic Defaults)**.
+   - Update [`NOTICE.md`](./NOTICE.md) whenever adding or modifying features/fixes.
 
 ---
 
-## 2. Public Repository & Privacy Guardrails
+## 2. Developer Planner, Esedre Dogfooding & Ticket Invariants
 
-1. **Zero Personal or Network Data in Git:**
+- **Primary Read-Only Inspection**: Always read `.esedre/snapshot.json` in the workspace root first for zero-latency ticket context (`Xbox` project).
+- **Strict Maximum Title Length (48 Characters)**: All ticket titles MUST be strictly capped at **48 characters** max (`MAX_TICKET_TITLE_LENGTH = 48`).
+- **Canonical Enums**: `status` must strictly be `'Planned'`, `'In Development'`, `'Completed'`, or `'Rejected'`. `type` must strictly be `'Feature'`, `'Platform'`, `'Tools'`, `'Idea'`, or `'Bug'`.
+
+<!-- ESEDRE_DOGFOODING_START -->
+- **ESEDRE DOGFOODING & DEVELOPER FEEDBACK MANDATE**:
+  - **Tooling Dogfooding Priority & MCP Preference**: The developer is also the author/creator of Esedre. Always prioritize using official Esedre tooling rigorously and correctly on all planning tasks, actively dogfooding the toolchain in practice. **Crucially, PREFER MCP tools (`esedre_*`) over CLI execution for ticket inspection, planning, comments, and lease claims whenever MCP is available in the session**, using the CLI wrapper (`.esedre/ese.cmd`) purely as a secondary fallback.
+  - **Proactive Issue & Feature Gap Escalation**: Whenever you encounter any friction, bug, formatting limitation, concurrency quirk, missing CLI flag/option/tool, output anomaly, or feature gap in Esedre, you MUST prominently and explicitly surface it to the developer.
+  - **Persistent Reminder Directive**: If you raise an Esedre tooling issue, gap, or question and the developer does not reply or acknowledge it, you MUST persistently follow up and remind them in subsequent turns until confirmed. Never let an Esedre defect, friction point, or improvement opportunity slip by unaddressed.
+<!-- ESEDRE_DOGFOODING_END -->
+
+---
+
+## 3. Public Repository, Privacy & Git Workflow Guardrails
+
+1. **Zero Personal or Network Data in Git**:
    - Never commit personal IP addresses, hostnames, MAC addresses, ADB device serials, console device names/serials, account tokens, or private keystores (`*.keystore`, `*.jks`, `local.properties`).
    - Always use generic placeholders (`<device_ip>:<port>`, `<tablet_ip>:<port>`, `<phone_ip>:<port>`, `<tv_ip>:5555`, `<esedre_host>:<port>`, `%LOCALAPPDATA%\Android\Sdk`) in docs, skills, tests, and comments.
-   - Keep `.esedre/` gitignored ([`.gitignore`](./.gitignore)) so local Esedre CLI wrappers, remote daemon URLs (`esedre.json`), and ticket snapshots (`snapshot.json`) are never committed to the public repository.
-2. **Pre-Commit Privacy Check:**
-   - Before committing, verify `git status` and `git diff` (and scan tracked/untracked files) to ensure no local environment artifacts, hostnames, private IPs, or credentials are staged.
+   - Keep `.esedre/` gitignored ([`.gitignore`](./.gitignore)).
+2. **Strict Git Commit & Push Restriction**:
+   - NO commits or pushes unless the user explicitly wrote `"commit"` or `"push"` in their **most recent prompt** (zero carry-over permission across turns).
+3. **Clean Commit Format & Zero Em Dashes**:
+   - Never use conventional commit prefixes (`feat:`, `fix:`, `chore:`, etc.). Use `[#Xbox-<id>] <Imperative Action Summary>` or `[Docs]` / `[Infra]` / `[Release] <Summary>`.
+   - Never use em dashes (`\u2014`) or en dashes (`\u2013`) anywhere in code, comments, commit messages, tickets, or documentation. Never hardcode `C:\Users\...` paths in tracked files.
+4. **Planning Mode Guardrail**:
+   - Never modify production code during Planning Mode without explicit user sign-off.
 
 ---
 
-## 3. Architecture for Upstream Sync & Contributing Back (`upstream/main` ↔ `origin/main`)
+## 4. Architecture, Protocol & UI Design Guardrails
 
-### Remote Topology
-- `origin` → `https://github.com/Aellinsar/XStreaming.git` (our public fork)
-- `upstream` → `https://github.com/Geocld/XStreaming.git` (original upstream repository)
+### Two-Tier Change Separation (`upstream/main` <-> `origin/main`)
+1. **Tier 1 (Upstreamable Engineering Fixes in `src/`)**:
+   - MSAL token caching & polling cancellation ([`src/MsalAuthentication.ts`](./src/MsalAuthentication.ts), [`src/xal/msal.ts`](./src/xal/msal.ts))
+   - HomeScreen auth callback stale-closure fix ([`src/pages/Home.tsx`](./src/pages/Home.tsx))
+   - Native WebRTC custom bitrate SDP injection (`b=AS:<kbps>`) ([`src/webrtc/index.ts`](./src/webrtc/index.ts))
+   - Cold-start native decoder/audio settings sync ([`src/store/settingStore.ts`](./src/store/settingStore.ts))
+   - RFC1918 private LAN IPv4 ICE candidate prioritization ([`src/xCloud/teredoCandidates.ts`](./src/xCloud/teredoCandidates.ts))
+   - Console Remote Play (`xHome`) `<50ms` SCTP DataChannel shutdown detection & clean exit without waking powered-off consoles ([`src/webrtc/index.ts`](./src/webrtc/index.ts), [`src/utils/streamReconnect.ts`](./src/utils/streamReconnect.ts))
+2. **Tier 2 (Fork-Specific Native Android UI & High-DPI Ergonomics)**:
+   - **Platform Target**: `minSdkVersion = 33` (Android 13 - Google Pixel Tablet `tangorpro` factory baseline), `compileSdkVersion = 34`, **JDK 17 LTS (`JavaVersion.VERSION_17`)**, **Kotlin `1.9.24`**, and **Jetpack Compose (`1.5.14` / BOM `2024.06.00`)**.
+   - **Full Native Android UI (`com.xstreaming.nativeui.*`)**: 2008-2009 Xbox 360 NXE ("New Xbox Experience") spatial stage featuring the receding 3D vertical channel hierarchy (`System Settings` -> `Achievements` -> `Cloud Gaming` -> `My Xbox`), top-right rectangular Xbox Live Gamercard, a single horizontal row of 4 crisp `3.dp`-corner rectangular beveled cards (`HomeDashboardScreen.kt`) standing pixel-flush on an API 33 AGSL `RuntimeShader` lit studio floor (`NxeGlassShader.kt`) with aligned vertical mirror reflections (`NxeCardFloorReflection`), custom vector Compose `Canvas` hardware/icon illustrations, cohesive brushed silver-white bevels and secondary typography (`#D6E2F0` - never neon cyan or rainbow sibling borders), root RenderNode backdrop blur, LRA tactile haptics (`NxeHapticsEngine`), dynamic `FLAG_KEEP_SCREEN_ON` lifecycle (`MainActivity.updateKeepScreenOn` enabled only when `currentRouteScreen == "stream"` so dashboard screens time out normally), and conditional startup boot flag (`native_android_ui` in `UiEngineBootConfig`, requiring app restart to switch between Native Android UI and Legacy React Native UI via the top-level Settings toggle). `NativeUiBridgeModule.isNativeUiEnabled()` must remain `@ReactMethod(isBlockingSynchronousMethod = true): Boolean` so React Native `<Modal>` overlays (`Spinner.tsx`, `Home.tsx`, `NativeStream.tsx`) are synchronously suppressed when Native UI is active.
+   - **1-Tap Browser OAuth 2.0 PKCE & Dual-Persisted Token Vault (`#Xbox-18`)**: Supports both 1-tap Chrome Custom Tabs OAuth 2.0 PKCE (`000000004c20a908`, `ms-xal-000000004c20a908://auth` parsed via pure RFC 3986 `parseQueryParams()` without relying on React Native's incomplete `URLSearchParams.get()` stub) and 2nd-Screen Device Code (`1f907974-e22b-4810-a9de-d9647380c97e`), backed by dual-persisted MMKV + Native `SharedPreferences("xstreaming_auth_vault")` storage and cached `xstsToken`/`gssvToken`.
+   - **Native Stream Overlay HUD & Touch Controller (`StreamOverlayHud.kt`)**: Animated 2009 Xbox 360 Ring-of-Light connection card (`NxeRingOfLightOrb` + 4-quadrant progress bar), compact `(X) Guide` handle at `26%` opacity (expanding to live 1Hz telemetry only when toggled), ghost-translucent (`22%-26%`) multi-touch controller (`NxeTouchGamepadOverlay`) with un-inverted screen `dy` (since `src/webrtc/channels/input.ts` negates `LeftThumbYAxis`/`RightThumbYAxis`), and automatic physical gamepad detection (`InputManager.InputDeviceListener`).
+   - **Two-Tier Developer Mode & Fuchsia Palette**: `isDeveloperModeAvailable` (unlocked via 7 taps on version badge) vs `isDeveloperModeEnabled` (master runtime toggle), styled with the standardized Fuchsia palette (`#D946EF` / `#F0ABFC`).
+   - **Universal Modal & `56dp` Modal Frame Invariants**: Unified `56.dp` modal header/footer bars (`NxeModalFrame`), single-line ellipsis titles, root backdrop blur, click-outside/Back/`(B)` dismissal, and zero redundant footer "Close"/"Done" buttons (never put a web navbar on `HomeDashboardScreen`).
 
-### Two-Tier Change Separation
-To make upstream PRs easy to propose in isolation and upstream merges conflict-free, we classify every change into one of two tiers (tracked in [`NOTICE.md`](./NOTICE.md)):
-
-#### Tier 1: Upstreamable Engineering Fixes & UX Improvements
-Self-contained bugfixes, protocol compliance fixes, and UX improvements that benefit all `XStreaming` users and should be proposed to `Geocld/XStreaming` via isolated PR branches (`fix/<topic>` or `upstream-pr/<topic>`):
-- **MSAL Token Caching & Polling Cancellation** ([`src/MsalAuthentication.ts`](./src/MsalAuthentication.ts), [`src/xal/msal.ts`](./src/xal/msal.ts))
-- **HomeScreen Auth Callback Stale-Closure Fix** ([`src/pages/Home.tsx`](./src/pages/Home.tsx))
-- **Streamlined Device Code Auth UI** ([`src/components/MsalAuth.tsx`](./src/components/MsalAuth.tsx))
-- **Native WebRTC Custom Bitrate SDP Injection (`b=AS:<kbps>`) & Custom Codec `setLocalDescription` Sync** ([`src/webrtc/index.ts`](./src/webrtc/index.ts), [`src/pages/NativeStream.tsx`](./src/pages/NativeStream.tsx))
-- **Cold-Start Native Decoder/Audio Settings Sync** ([`src/store/settingStore.ts`](./src/store/settingStore.ts))
-- **RFC1918 Private LAN IPv4 ICE Candidate Prioritization** ([`src/xCloud/teredoCandidates.ts`](./src/xCloud/teredoCandidates.ts))
-- **Console Remote Play (`xHome`) SCTP DataChannel Shutdown Detection & Clean Exit Without Forced Wake** ([`src/webrtc/index.ts`](./src/webrtc/index.ts), [`src/utils/streamReconnect.ts`](./src/utils/streamReconnect.ts), [`src/pages/NativeStream.tsx`](./src/pages/NativeStream.tsx))
-- **Windows `patch-package` Line-Ending & Hunk Fix** ([`patches/react-native-paper+5.12.5.patch`](./patches/react-native-paper+5.12.5.patch), [`.gitattributes`](./.gitattributes))
-
-#### Tier 2: Fork-Specific Build & Ergonomic Defaults
-Opinionated defaults and local developer ergonomics maintained on our fork's `main` branch:
-- Enforcing OAuth 2.0 Device Code (`MsalAuthentication`) as the sole login flow and removing the embedded `<WebView>` login route ([`src/App.tsx`](./src/App.tsx), [`src/pages/Home.tsx`](./src/pages/Home.tsx)).
-- Default settings tuned for high-DPI tablet & console Remote Play (`resolution: 1081`, `native_low_latency_decoder: true`, `fsr: true`, `power_on: true`, `check_update: false`).
-- Sleek Translucent Frosted Glass UI & **Deep Royal Sapphire (`#1D4ED8`) + Electric Cyan (`#00E5FF`)** theme architecture ([`src/theme/presets.ts`](./src/theme/presets.ts), [`src/utils/themeColor.ts`](./src/utils/themeColor.ts), [`src/components/XboxSymbolBackground.tsx`](./src/components/XboxSymbolBackground.tsx), [`src/components/ConsoleItem.tsx`](./src/components/ConsoleItem.tsx), [`src/components/HomeItem.tsx`](./src/components/HomeItem.tsx)) and Ring-of-Light Connection HUD ([`src/components/Spinner.tsx`](./src/components/Spinner.tsx), [`src/utils/connectionStatus.ts`](./src/utils/connectionStatus.ts)).
-- Portable Gradle/NDK build fallbacks (Windows NDK host detection, optional `nano-rs` skip when `cargo` is absent, debug signing fallback when release keystore is absent).
-- Repository agent configuration ([`AGENTS.md`](./AGENTS.md), [`NOTICE.md`](./NOTICE.md), [`.agents/skills/`](./.agents/skills)).
-
-### Critical Protocol & UI Design Guardrails
-1. **Never Auto-Call `startSession()` on `xHome` Disconnect/Shutdown (`src/utils/streamReconnect.ts`, `src/pages/NativeStream.tsx`):**
-   - Unlike `xCloud` (`streamType === 'cloud'`), which caches `this.sessionPath` to renegotiate against an active cloud server blade, `XcloudApi.startSession()` on Console Remote Play (`xHome`, `streamType !== 'cloud'`) always sends a new `POST /v5/sessions/home/play` request.
-   - Because `POST /v5/sessions/home/play` acts as the **Xbox Live Wake-on-LAN / Remote Wake command**, auto-reconnecting `xHome` after the user selects *"Turn off console"* forces a powered-off Xbox back on.
-   - Always keep `canScheduleStreamReconnect()` restricted to `streamType === 'cloud'`. On `xHome`, detect console-initiated shutdown immediately (<50ms) via SCTP DataChannel (`control`, `input`, `message`) `closing`/`close` events (`_notifyRemoteChannelClosed` in `src/webrtc/index.ts`), and exit cleanly to `Home` (`My Xbox`) via non-blocking `remoteCloseExit()`.
-2. **Sleek Frosted Glass & Royal Sapphire + Electric Cyan UI (`src/theme/presets.ts`, `src/components/*`):**
-   - Never introduce 2005 "Blades"-era concentric wireframe rings, target circles, curved horizon bezier arcs, or metallic pie-wedge discs.
-   - Maintain translucent multi-stop SVG glass gradients (`stopOpacity` `0.36–0.64`) with diagonal glass pane reflections, crisp `1px` **Electric Cyan (`#00E5FF` / `#22D3EE`)** borders and top specular light bars, and **Deep Royal Sapphire (`#1D4ED8` / `#1E3A8A`)** glass bodies—avoiding 100%-opaque dark-navy card fills or washed-out white pastel radial overlays.
-3. **Surgical Diffs & Backward-Compatible Signatures:**
-   - Never run bulk auto-formatters across untouched lines in upstream files (`Home.tsx`, `NativeStream.tsx`, `App.tsx`, `xCloud/index.ts`).
-   - Extract new decision logic into standalone pure TypeScript modules (`src/utils/streamReconnect.ts`, `src/utils/connectionStatus.ts`, `src/xCloud/teredoCandidates.ts`) with full Jest unit tests.
+### Critical Protocol Invariant: Never Auto-Call `startSession()` on `xHome` Shutdown
+- Unlike `xCloud` (`streamType === 'cloud'`), `XcloudApi.startSession()` on Console Remote Play (`xHome`) sends a new `POST /v5/sessions/home/play` request, which acts as the **Xbox Live Wake-on-LAN / Remote Wake command**.
+- Always keep `canScheduleStreamReconnect()` restricted to `streamType === 'cloud'`. On `xHome`, detect console-initiated shutdown immediately (`<50ms`) via SCTP DataChannel (`control`, `input`, `message`) `closing`/`close` events and exit cleanly to the Home dashboard without waking a powered-off Xbox.
 
 ---
 
-## 4. Engineering & Testing Standards
+## 5. Automated Testing, Build & Deployment Quick Reference
 
-1. **Mandatory Unit Tests (`__tests__/`):**
-   - Every bugfix or logic change must have corresponding Jest unit tests in [`__tests__/`](./__tests__):
-     - [`__tests__/teredoCandidates.test.ts`](./__tests__/teredoCandidates.test.ts): LAN IPv4 vs IPv6 Teredo candidate ordering and deduplication.
-     - [`__tests__/webrtcBitrate.test.ts`](./__tests__/webrtcBitrate.test.ts): RFC 4566 `b=AS:<kbps>` SDP bandwidth injection and replacement across video/audio media sections.
-     - [`__tests__/msalAuthentication.test.ts`](./__tests__/msalAuthentication.test.ts): MSAL token validation, legacy XAL token deprecation, MMKV token caching, and device-code polling cancellation.
-     - [`__tests__/streamReconnect.test.ts`](./__tests__/streamReconnect.test.ts): `xCloud` auto-reconnect vs `xHome` clean exit (`exit_stream`) on DataChannel close, ICE failure, and `AppState` resume without waking powered-off consoles.
-     - [`__tests__/connectionStatus.test.ts`](./__tests__/connectionStatus.test.ts): Context-aware connection HUD copy distinguishing `xHome` (`Waking Xbox Console`) from `xCloud` (`Preparing Cloud Console`).
-     - [`__tests__/themePresets.test.ts`](./__tests__/themePresets.test.ts): Deep Royal Sapphire (`#1D4ED8`) & Electric Cyan (`#00E5FF`) default glass tokens and preset resolution.
-2. **Run Tests Before Building or Committing:**
+1. **Mandatory Unit Tests (Zero Failures & Zero Warnings)**:
    ```powershell
+   # TypeScript / Jest unit tests (__tests__/*.test.ts)
    corepack yarn test --watchAll=false
+
+   # Android Native Kotlin / JUnit 4 tests (android/app/src/test/java/com/xstreaming/nativeui/)
+   $env:ANDROID_HOME = "$env:LOCALAPPDATA\Android\Sdk"
+   $env:JAVA_HOME = "$env:USERPROFILE\.jdks\jdk-17"
+   Set-Location android
+   .\gradlew.bat testProdReleaseUnitTest
    ```
-   All test suites must pass (`0 failed`) before building a release APK or opening a PR.
-
----
-
-## 5. Build & Multi-Device ADB Deployment Quick Reference
-
-### Build Signed Production Release APK (Windows)
-```powershell
-$env:ANDROID_HOME = "$env:LOCALAPPDATA\Android\Sdk"
-$env:JAVA_HOME = "$env:USERPROFILE\.jdks\jdk-17"
-Set-Location android
-.\gradlew.bat assembleProdRelease
-```
-- **Output APK:** `android/app/build/outputs/apk/prod/release/app-prod-release.apk`
-
-### Deploy via ADB Wireless Debugging
-```powershell
-$adb = "$env:LOCALAPPDATA\Android\Sdk\platform-tools\adb.exe"
-& $adb start-server
-
-# One-time per device: suppress Play Protect "Unknown to Google Play" prompt on ADB installs
-& $adb -s <device_ip>:<connect_port> shell settings put global verifier_verify_adb_installs 0
-
-# Install / upgrade APK preserving app data
-& $adb -s <device_ip>:<connect_port> install -r "android\app\build\outputs\apk\prod\release\app-prod-release.apk"
-```
-
----
-
-## 6. Available Agent Skills ([`.agents/skills/`](./.agents/skills))
-
-- [`.agents/skills/upstream-sync-and-pr/SKILL.md`](./.agents/skills/upstream-sync-and-pr/SKILL.md): Integrating upstream commits from `Geocld/XStreaming` (`upstream/main`), resolving conflicts cleanly, and extracting isolated `upstream-pr/<topic>` branches to contribute fixes back upstream.
-- [`.agents/skills/xstreaming-build/SKILL.md`](./.agents/skills/xstreaming-build/SKILL.md): Running Jest unit tests, applying `patch-package` patches, and building the Android release APK across Windows, macOS, and Linux.
-- [`.agents/skills/adb-multi-device-deploy/SKILL.md`](./.agents/skills/adb-multi-device-deploy/SKILL.md): Pairing, connecting, suppressing Play Protect USB/ADB verification prompts, and deploying APKs across phones, tablets, and Android TV devices.
+2. **Build Signed Production Release APK (`assembleProdRelease`)**:
+   ```powershell
+   $env:ANDROID_HOME = "$env:LOCALAPPDATA\Android\Sdk"
+   $env:JAVA_HOME = "$env:USERPROFILE\.jdks\jdk-17"
+   Remove-Item Env:\JAVA_TOOL_OPTIONS -ErrorAction SilentlyContinue
+   Set-Location android
+   .\gradlew.bat assembleProdRelease
+   ```
+   - **Output APK**: `android/app/build/outputs/apk/prod/release/app-prod-release.apk`
+3. **Deploy via ADB Wireless Debugging**:
+   ```powershell
+   $adb = "$env:LOCALAPPDATA\Android\Sdk\platform-tools\adb.exe"
+   & $adb start-server
+   & $adb -s <device_ip>:<connect_port> shell settings put global verifier_verify_adb_installs 0
+   & $adb -s <device_ip>:<connect_port> install -r "android\app\build\outputs\apk\prod\release\app-prod-release.apk"
+   ```

@@ -1,6 +1,11 @@
-import {storage} from '../store/mmkv';
+import {
+  readPersistentAuthJson,
+  writePersistentAuthJson,
+  clearPersistentAuthJson,
+} from '../store/authVaultStore';
 import SisuToken, {SisuTokenData} from '../tokens/sisutoken';
 import UserToken, {UserTokenData} from '../tokens/usertoken';
+import XstsToken, {XstsTokenData} from '../tokens/xststoken';
 
 const STORE_KEY = 'user.tokenstore';
 
@@ -9,19 +14,22 @@ export type AuthenticationMethod = 'xal' | 'msal' | 'none';
 export type TokenStoreData = {
   userToken?: UserTokenData;
   sisuToken?: SisuTokenData;
+  xstsToken?: XstsTokenData;
+  gssvToken?: XstsTokenData;
   tokenUpdateTime?: number;
 };
 
 export default class TokenStore {
   private _userToken?: UserToken;
   private _sisuToken?: SisuToken;
+  private _xstsToken?: XstsToken;
+  private _gssvToken?: XstsToken;
   private _tokenUpdateTime = 0;
 
   load(): boolean {
     let tokens = '{}';
     try {
-      const stored = storage.getString(STORE_KEY);
-      tokens = stored ?? '{}';
+      tokens = readPersistentAuthJson(STORE_KEY, '{}');
     } catch {
       tokens = '{}';
     }
@@ -31,15 +39,28 @@ export default class TokenStore {
   }
 
   loadJson(json: string): boolean {
-    const jsonData = JSON.parse(json) as TokenStoreData;
-
-    if (jsonData.userToken) {
-      this._userToken = new UserToken(jsonData.userToken);
+    let jsonData: TokenStoreData = {};
+    try {
+      jsonData = JSON.parse(json) as TokenStoreData;
+    } catch {
+      jsonData = {};
     }
 
-    if (jsonData.sisuToken) {
-      this._sisuToken = new SisuToken(jsonData.sisuToken);
-    }
+    this._userToken = jsonData.userToken
+      ? new UserToken(jsonData.userToken)
+      : undefined;
+
+    this._sisuToken = jsonData.sisuToken
+      ? new SisuToken(jsonData.sisuToken)
+      : undefined;
+
+    this._xstsToken = jsonData.xstsToken
+      ? new XstsToken(jsonData.xstsToken)
+      : undefined;
+
+    this._gssvToken = jsonData.gssvToken
+      ? new XstsToken(jsonData.gssvToken)
+      : undefined;
 
     this._tokenUpdateTime = jsonData.tokenUpdateTime ?? 0;
 
@@ -50,32 +71,44 @@ export default class TokenStore {
     return {
       userToken: this._userToken?.data,
       sisuToken: this._sisuToken?.data,
+      xstsToken: this._xstsToken?.data,
+      gssvToken: this._gssvToken?.data,
       tokenUpdateTime: this._tokenUpdateTime,
     };
   }
 
   saveData(data: TokenStoreData): void {
-    const normalizedData = {
+    const normalizedData: TokenStoreData = {
       userToken: data?.userToken,
       sisuToken: data?.sisuToken,
+      xstsToken: data?.xstsToken,
+      gssvToken: data?.gssvToken,
       tokenUpdateTime: data?.tokenUpdateTime ?? 0,
     };
 
-    storage.set(STORE_KEY, JSON.stringify(normalizedData));
+    const serialized = JSON.stringify(normalizedData);
+    writePersistentAuthJson(STORE_KEY, serialized);
     this._userToken = undefined;
     this._sisuToken = undefined;
+    this._xstsToken = undefined;
+    this._gssvToken = undefined;
     this._tokenUpdateTime = 0;
-    this.loadJson(JSON.stringify(normalizedData));
+    this.loadJson(serialized);
   }
 
   setUserToken(userToken: UserToken): void {
     const expireDate = new Date();
     const expiresIn = userToken.data.expires_in ?? 0;
-    expireDate.setSeconds(expireDate.getSeconds() + expiresIn);
+    if (expiresIn > 0) {
+      expireDate.setSeconds(expireDate.getSeconds() + expiresIn);
+    }
 
     this._userToken = new UserToken({
       ...userToken.data,
-      expires_on: expireDate.toISOString(),
+      expires_on:
+        expiresIn > 0
+          ? expireDate.toISOString()
+          : userToken.data.expires_on || expireDate.toISOString(),
     });
   }
 
@@ -91,6 +124,22 @@ export default class TokenStore {
     return this._sisuToken;
   }
 
+  setXstsToken(xstsToken: XstsToken | undefined): void {
+    this._xstsToken = xstsToken ? new XstsToken(xstsToken.data) : undefined;
+  }
+
+  getXstsToken(): XstsToken | undefined {
+    return this._xstsToken;
+  }
+
+  setGssvToken(gssvToken: XstsToken | undefined): void {
+    this._gssvToken = gssvToken ? new XstsToken(gssvToken.data) : undefined;
+  }
+
+  getGssvToken(): XstsToken | undefined {
+    return this._gssvToken;
+  }
+
   getTokenUpdateTime(): number {
     return this._tokenUpdateTime;
   }
@@ -99,31 +148,33 @@ export default class TokenStore {
     const data = JSON.stringify({
       userToken: this._userToken?.data,
       sisuToken: this._sisuToken?.data,
+      xstsToken: this._xstsToken?.data,
+      gssvToken: this._gssvToken?.data,
       tokenUpdateTime: Date.now(),
     });
 
-    storage.set(STORE_KEY, data);
+    writePersistentAuthJson(STORE_KEY, data);
   }
 
   clear(): void {
-    try {
-      storage.delete(STORE_KEY);
-    } catch (e) {
-      console.log('clear error: ', e);
-    }
+    clearPersistentAuthJson(STORE_KEY);
 
     this._userToken = undefined;
     this._sisuToken = undefined;
+    this._xstsToken = undefined;
+    this._gssvToken = undefined;
   }
 
   clearTokenUpdateTime(): void {
     const data = JSON.stringify({
       userToken: this._userToken?.data,
       sisuToken: this._sisuToken?.data,
+      xstsToken: this._xstsToken?.data,
+      gssvToken: this._gssvToken?.data,
       tokenUpdateTime: 0,
     });
 
-    storage.set(STORE_KEY, data);
+    writePersistentAuthJson(STORE_KEY, data);
     this._tokenUpdateTime = 0;
   }
 
